@@ -1,14 +1,42 @@
 {
   "name": "shrinevtt",
   "version": "0.1.0",
-  "description": "ShrineVTT server and frontend",
+  "description": "ShrineVTT backend services",
   "type": "module",
+  "imports": {
+    "#config/*": "./backend/src/config/*",
+    "#auth/*": "./backend/src/auth/*",
+    "#routes/*": "./backend/src/routes/*",
+    "#storage/*": "./backend/src/storage/*",
+    "#ws/*": "./backend/src/ws/*"
+  },
   "scripts": {
-    "start": "node server/index.js"
+    "dev": "node --watch backend/src/server.js",
+    "start": "node backend/src/server.js",
+    "build": "npm --prefix frontend run build && node scripts/prepare-static.mjs",
+    "lint": "eslint \"backend/src/**/*.js\"",
+    "lint:fix": "eslint \"backend/src/**/*.js\" --fix",
+    "format": "prettier --check \"**/*.{js,json,md,css,html}\"",
+    "format:write": "prettier --write \"**/*.{js,json,md,css,html}\""
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "jsonwebtoken": "^9.0.2",
-    "ws": "^8.14.2"
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "lowdb": "^5.1.0",
+    "morgan": "^1.10.0",
+    "nanoid": "^5.0.7",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.12.0",
+    "eslint": "^9.12.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "prettier": "^3.3.3",
+    "globals": "^15.9.0"
   }
 }

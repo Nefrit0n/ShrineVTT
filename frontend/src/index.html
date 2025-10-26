@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ShrineVTT</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel">
+        <h1>ShrineVTT</h1>
+        <form id="login-form">
+          <fieldset>
+            <legend>Авторизация</legend>
+            <label>
+              Логин
+              <input
+                type="text"
+                name="username"
+                placeholder="master"
+                required
+              />
+            </label>
+            <label>
+              Пароль
+              <input
+                type="password"
+                name="password"
+                placeholder="masterpass"
+                required
+              />
+            </label>
+            <button type="submit">Войти</button>
+          </fieldset>
+        </form>
+        <div class="status">
+          <h2>Состояние</h2>
+          <ul>
+            <li>HTTP: <span id="http-status">offline</span></li>
+            <li>WebSocket: <span id="ws-status">disconnected</span></li>
+            <li>Роль: <span id="role-status">—</span></li>
+          </ul>
+        </div>
+        <div class="actions">
+          <button id="ping-button" type="button" disabled>
+            Отправить ping
+          </button>
+          <button id="announce-button" type="button" disabled>
+            Отправить объявление (MASTER)
+          </button>
+        </div>
+        <div class="log" id="event-log"></div>
+      </section>
+      <section class="canvas-container">
+        <canvas id="scene" width="960" height="640"></canvas>
+      </section>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
