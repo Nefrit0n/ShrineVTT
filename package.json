@@ -8,7 +8,9 @@
     "#auth/*": "./backend/src/auth/*",
     "#routes/*": "./backend/src/routes/*",
     "#storage/*": "./backend/src/storage/*",
-    "#ws/*": "./backend/src/ws/*"
+    "#ws/*": "./backend/src/ws/*",
+    "#domain/*": "./backend/src/domain/*",
+    "#infra/*": "./backend/src/infra/*"
   },
   "scripts": {
     "dev": "node --watch backend/src/server.js",
@@ -17,7 +19,8 @@
     "lint": "eslint \"backend/src/**/*.js\"",
     "lint:fix": "eslint \"backend/src/**/*.js\" --fix",
     "format": "prettier --check \"**/*.{js,json,md,css,html}\"",
-    "format:write": "prettier --write \"**/*.{js,json,md,css,html}\""
+    "format:write": "prettier --write \"**/*.{js,json,md,css,html}\"",
+    "test": "node --test backend/tests"
   },
   "engines": {
     "node": ">=18"
