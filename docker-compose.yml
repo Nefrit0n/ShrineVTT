@@ -1,10 +1,8 @@
-version: "3.9"
-
 services:
   shrinevtt:
     build: .
     env_file:
-      - .env
+      - .env.example
     ports:
       - "${PORT:-8080}:8080"
     volumes:
