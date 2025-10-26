@@ -1,23 +1,29 @@
-# Stage 1: Frontend assets (placeholder for future build tooling)
-FROM node:20-alpine AS frontend-builder
-WORKDIR /app
-COPY public ./public
-RUN mkdir -p /out/public \
-  && cp -r public/. /out/public/
+# Stage 1: build frontend assets
+FROM node:18-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend ./
+RUN npm run build
 
-# Stage 2: Install backend dependencies
-FROM node:20-alpine AS backend-deps
+# Stage 2: install backend production dependencies
+FROM node:18-alpine AS backend-deps
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+COPY package*.json ./
+RUN npm install --omit=dev
 
-# Stage 3: Final runtime image
-FROM node:20-alpine AS production
+# Stage 3: final runtime image
+FROM node:18-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
+ENV PORT=8080
+
 COPY --from=backend-deps /app/node_modules ./node_modules
 COPY --from=backend-deps /app/package.json ./package.json
-COPY server ./server
-COPY --from=frontend-builder /out/public ./public
-EXPOSE 3000
-CMD ["node", "server/index.js"]
+COPY backend ./backend
+COPY --from=frontend-builder /app/frontend/dist ./backend/static
+
+VOLUME ["/app/data"]
+EXPOSE 8080
+
+CMD ["node", "backend/src/server.js"]
