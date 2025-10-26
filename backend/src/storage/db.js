@@ -25,6 +25,8 @@ const defaultData = {
     },
   ],
   sessions: [],
+  scenes: [],
+  tokens: [],
 };
 
 export const initDatabase = async () => {
