@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "email": "master@shrinevtt.local",
+    "password": "masterpass",
+    "role": "Master"
+  },
+  {
+    "id": 2,
+    "email": "player@shrinevtt.local",
+    "password": "playerpass",
+    "role": "Player"
+  }
+]

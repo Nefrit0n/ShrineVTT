@@ -1,0 +1,14 @@
+{
+  "name": "shrinevtt",
+  "version": "0.1.0",
+  "description": "ShrineVTT server and frontend",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "ws": "^8.14.2"
+  }
+}
