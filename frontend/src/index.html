@@ -50,6 +50,42 @@
             Отправить объявление (MASTER)
           </button>
         </div>
+        <form id="token-form" class="token-form">
+          <fieldset id="token-controls" disabled>
+            <legend>Токены (MASTER)</legend>
+            <label>
+              ID сцены
+              <input type="text" name="sceneId" placeholder="scene-id" required />
+            </label>
+            <label>
+              Имя токена
+              <input type="text" name="name" placeholder="Герой" required />
+            </label>
+            <label>
+              ID владельца (опционально)
+              <input type="text" name="ownerUserId" placeholder="player-1" />
+            </label>
+            <label>
+              URL спрайта (опционально)
+              <input
+                type="text"
+                name="sprite"
+                placeholder="https://example.com/token.png"
+              />
+            </label>
+            <div class="token-form-grid">
+              <label>
+                Клетка X
+                <input type="number" name="xCell" required />
+              </label>
+              <label>
+                Клетка Y
+                <input type="number" name="yCell" required />
+              </label>
+            </div>
+            <button type="submit">Добавить токен</button>
+          </fieldset>
+        </form>
         <div class="log" id="event-log"></div>
       </section>
       <section class="canvas-container">

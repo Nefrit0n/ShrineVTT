@@ -8,6 +8,22 @@ type WsStatus = "connected" | "disconnected" | "error";
 
 type HttpStatus = "online" | "offline" | "error";
 
+type TokenDTO = {
+  id: string;
+  sceneId: string;
+  ownerUserId: string | null;
+  name: string;
+  xCell: number;
+  yCell: number;
+  sprite: string | null;
+  visibility: string;
+  meta: Record<string, unknown>;
+};
+
+type TokenCreateAck =
+  | { ok: true; token: TokenDTO }
+  | { ok: false; error: string; code?: string; details?: unknown };
+
 const httpStatusEl = document.querySelector<HTMLSpanElement>("#http-status");
 const wsStatusEl = document.querySelector<HTMLSpanElement>("#ws-status");
 const roleStatusEl = document.querySelector<HTMLSpanElement>("#role-status");
@@ -15,9 +31,18 @@ const logContainer = document.querySelector<HTMLDivElement>("#event-log");
 const pingButton = document.querySelector<HTMLButtonElement>("#ping-button");
 const announceButton = document.querySelector<HTMLButtonElement>("#announce-button");
 const loginForm = document.querySelector<HTMLFormElement>("#login-form");
+const tokenForm = document.querySelector<HTMLFormElement>("#token-form");
+const tokenControls = document.querySelector<HTMLFieldSetElement>("#token-controls");
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
 const gridToggle = document.querySelector<HTMLInputElement>("#grid-toggle");
 const scaleIndicator = document.querySelector<HTMLSpanElement>("#scale-indicator");
+const tokenNameInput = tokenForm?.querySelector<HTMLInputElement>("input[name=\"name\"]");
+const tokenOwnerInput = tokenForm?.querySelector<HTMLInputElement>(
+  "input[name=\"ownerUserId\"]"
+);
+const tokenSpriteInput = tokenForm?.querySelector<HTMLInputElement>("input[name=\"sprite\"]");
+const tokenXInput = tokenForm?.querySelector<HTMLInputElement>("input[name=\"xCell\"]");
+const tokenYInput = tokenForm?.querySelector<HTMLInputElement>("input[name=\"yCell\"]");
 
 let socket: Socket | null = null;
 let authToken: string | null = window.sessionStorage.getItem("shrinevtt:token");
@@ -45,6 +70,9 @@ const updateRole = (role: ServerRole) => {
   }
   if (announceButton) {
     announceButton.disabled = role !== "MASTER";
+  }
+  if (tokenControls) {
+    tokenControls.disabled = role !== "MASTER";
   }
 };
 
@@ -105,6 +133,15 @@ const connectSocket = () => {
 
   socket.on("announcement", (payload) => {
     appendLog("ANNOUNCEMENT", payload);
+  });
+
+  socket.on("token.create:out", (payload: { token: TokenDTO }) => {
+    appendLog("TOKEN create", {
+      id: payload.token.id,
+      sceneId: payload.token.sceneId,
+      name: payload.token.name,
+    });
+    stage?.upsertToken(payload.token);
   });
 };
 
@@ -174,6 +211,92 @@ announceButton?.addEventListener("click", () => {
     socket.emit("gm:announcement", { message });
     appendLog("GM announcement", { message });
   }
+});
+
+tokenForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  if (!socket || currentRole !== "MASTER") {
+    appendLog("TOKEN create denied", { message: "Требуется роль MASTER" });
+    return;
+  }
+
+  const formData = new FormData(tokenForm);
+  const sceneIdRaw = formData.get("sceneId");
+  const nameRaw = formData.get("name");
+  const xCellRaw = formData.get("xCell");
+  const yCellRaw = formData.get("yCell");
+
+  if (typeof sceneIdRaw !== "string" || !sceneIdRaw.trim()) {
+    appendLog("TOKEN create error", { message: "ID сцены обязателен" });
+    return;
+  }
+
+  if (typeof nameRaw !== "string" || !nameRaw.trim()) {
+    appendLog("TOKEN create error", { message: "Имя токена обязательно" });
+    return;
+  }
+
+  const xCell = Number(xCellRaw);
+  const yCell = Number(yCellRaw);
+
+  if (!Number.isFinite(xCell) || !Number.isFinite(yCell)) {
+    appendLog("TOKEN create error", { message: "Координаты должны быть числами" });
+    return;
+  }
+
+  const ownerRaw = formData.get("ownerUserId");
+  const spriteRaw = formData.get("sprite");
+
+  const payload: Record<string, unknown> = {
+    sceneId: sceneIdRaw.trim(),
+    name: nameRaw.trim(),
+    xCell,
+    yCell,
+  };
+
+  if (typeof ownerRaw === "string" && ownerRaw.trim()) {
+    payload.ownerUserId = ownerRaw.trim();
+  }
+
+  if (typeof spriteRaw === "string" && spriteRaw.trim()) {
+    payload.sprite = spriteRaw.trim();
+  }
+
+  socket.emit("token.create:in", payload, (response: TokenCreateAck) => {
+    if (!response?.ok) {
+      appendLog("TOKEN create error", {
+        message: response?.error ?? "Не удалось создать токен",
+        code: response?.code,
+        details: response?.details ?? undefined,
+      });
+      return;
+    }
+
+    appendLog("TOKEN create requested", {
+      id: response.token.id,
+      name: response.token.name,
+      sceneId: response.token.sceneId,
+    });
+
+    if (tokenNameInput) {
+      tokenNameInput.value = "";
+    }
+    if (tokenOwnerInput) {
+      tokenOwnerInput.value = "";
+    }
+    if (tokenSpriteInput) {
+      tokenSpriteInput.value = "";
+    }
+    if (tokenXInput) {
+      tokenXInput.value = "";
+    }
+    if (tokenYInput) {
+      tokenYInput.value = "";
+    }
+
+    tokenNameInput?.focus();
+  });
 });
 
 const bootstrap = async () => {
