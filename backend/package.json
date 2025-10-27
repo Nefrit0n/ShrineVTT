@@ -4,9 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node -e \"console.log('Starting backend dev server (placeholder)')\"",
-    "build": "node -e \"console.log('Building backend (placeholder)')\"",
-    "start": "node -e \"console.log('Starting backend in production (placeholder)')\""
+    "dev": "node ./src/server.js",
+    "build": "node -e \"console.log('No backend build step defined')\"",
+    "start": "node ./src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "pino": "^9.2.0"
   },
   "engines": {
     "node": ">=18"
