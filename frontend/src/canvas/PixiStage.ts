@@ -26,7 +26,7 @@ export class PixiStage {
   private readonly gridLayer: GridLayer;
   private readonly mapLayer: MapLayer;
   private readonly tokensLayer: TokensLayer;
-  private readonly gridSize: number;
+  private gridSize: number;
   private readonly onScaleChange?: (scale: number) => void;
   private readonly minScale: number;
   private readonly maxScale: number;
@@ -90,6 +90,17 @@ export class PixiStage {
     return this._scale;
   }
 
+  public setGridSize(gridSize: number): void {
+    if (!Number.isFinite(gridSize) || gridSize <= 0 || gridSize === this.gridSize) {
+      return;
+    }
+
+    this.gridSize = gridSize;
+    this.gridLayer.setGridSize(gridSize);
+    this.tokensLayer.setGridSize(gridSize);
+    this.requestGridUpdate();
+  }
+
   public async setMap(descriptor: MapDescriptor): Promise<void> {
     await this.mapLayer.setBackground(descriptor);
     this.centerOnMap();
@@ -98,6 +109,26 @@ export class PixiStage {
 
   public upsertToken(token: TokenRenderData): void {
     this.tokensLayer.upsert(token);
+  }
+
+  public setTokens(tokens: TokenRenderData[]): void {
+    this.tokensLayer.replaceAll(tokens);
+  }
+
+  public async applyScene(scene: {
+    gridSize: number;
+    widthPx: number;
+    heightPx: number;
+    mapImage: string | null;
+  }): Promise<void> {
+    this.setGridSize(scene.gridSize);
+    await this.mapLayer.setBackground({
+      url: scene.mapImage ?? undefined,
+      fallbackColor: 0x1b1b1b,
+      fallbackSize: { width: scene.widthPx, height: scene.heightPx },
+    });
+    this.centerOnMap();
+    this.requestGridUpdate();
   }
 
   public setTokenMovePermission(

@@ -46,7 +46,7 @@ type DragState = {
 };
 
 export class TokensLayer extends Container {
-  private readonly gridSize: number;
+  private gridSize: number;
   private readonly tokens = new Map<string, TokenDisplay>();
   private readonly tokenData = new Map<string, TokenRenderData>();
   private readonly dragPreview: Graphics;
@@ -82,6 +82,38 @@ export class TokensLayer extends Container {
     this.applyInteractivity(display, token);
   }
 
+  public setGridSize(size: number): void {
+    if (!Number.isFinite(size) || size <= 0 || size === this.gridSize) {
+      return;
+    }
+
+    this.gridSize = size;
+
+    for (const [tokenId, display] of this.tokens.entries()) {
+      const token = this.tokenData.get(tokenId);
+      if (token) {
+        this.updateDisplay(display, token);
+        this.applyInteractivity(display, token);
+      }
+    }
+
+    this.hidePreview();
+  }
+
+  public replaceAll(nextTokens: TokenRenderData[]): void {
+    const nextIds = new Set(nextTokens.map((token) => token.id));
+
+    for (const existingId of Array.from(this.tokens.keys())) {
+      if (!nextIds.has(existingId)) {
+        this.removeTokenDisplay(existingId);
+      }
+    }
+
+    for (const token of nextTokens) {
+      this.upsert(token);
+    }
+  }
+
   public setMovePermission(checker: (token: TokenRenderData) => boolean): void {
     this.canMoveToken = checker;
     for (const [tokenId, display] of this.tokens.entries()) {
@@ -103,35 +135,30 @@ export class TokensLayer extends Container {
     container.sortableChildren = false;
 
     const placeholder = new Graphics();
-    const radius = Math.max(16, this.gridSize * 0.35);
-    placeholder.circle(0, 0, radius);
-    placeholder.fill({ color: 0x4b5fff, alpha: 0.85 });
-    placeholder.stroke({
-      color: 0xffffff,
-      alpha: 0.9,
-      width: Math.max(2, this.gridSize * 0.08),
-    });
     container.addChild(placeholder);
 
     const label = new Text({
       text: initialName,
       style: {
         fill: 0xffffff,
-        fontSize: Math.max(12, this.gridSize * 0.3),
+        fontSize: 16,
         stroke: { color: 0x000000, width: 3, alpha: 0.6 },
       },
     });
     label.anchor.set(0.5, 1);
-    label.position.set(0, -(radius + 6));
+    label.position.set(0, 0);
     container.addChild(label);
 
-    return {
+    const display: TokenDisplay = {
       container,
       placeholder,
       label,
       sprite: null,
       handlersAttached: false,
     };
+
+    this.configureTokenAppearance(display);
+    return display;
   }
 
   private updateDisplay(display: TokenDisplay, token: TokenRenderData): void {
@@ -143,6 +170,7 @@ export class TokensLayer extends Container {
     container.zIndex = token.yCell;
 
     label.text = token.name;
+    this.configureTokenAppearance(display);
 
     const spriteUrl =
       typeof token.sprite === "string" ? token.sprite.trim() : "";
@@ -173,6 +201,23 @@ export class TokensLayer extends Container {
     }
   }
 
+  private configureTokenAppearance(display: TokenDisplay): void {
+    const { placeholder, label } = display;
+    const radius = Math.max(16, this.gridSize * 0.35);
+
+    placeholder.clear();
+    placeholder.circle(0, 0, radius);
+    placeholder.fill({ color: 0x4b5fff, alpha: 0.85 });
+    placeholder.stroke({
+      color: 0xffffff,
+      alpha: 0.9,
+      width: Math.max(2, this.gridSize * 0.08),
+    });
+
+    label.style.fontSize = Math.max(12, this.gridSize * 0.3);
+    label.position.set(0, -(radius + 6));
+  }
+
   private attachDragHandlers(tokenId: string, display: TokenDisplay): void {
     if (display.handlersAttached) {
       return;
@@ -183,6 +228,28 @@ export class TokensLayer extends Container {
     });
 
     display.handlersAttached = true;
+  }
+
+  private removeTokenDisplay(tokenId: string): void {
+    const display = this.tokens.get(tokenId);
+    if (!display) {
+      return;
+    }
+
+    if (this.dragState?.tokenId === tokenId) {
+      const { moveListener, endListener, display: dragDisplay } = this.dragState;
+      dragDisplay.container.off("globalpointermove", moveListener);
+      dragDisplay.container.off("globalpointerup", endListener);
+      dragDisplay.container.off("pointerupoutside", endListener);
+      dragDisplay.container.off("pointercancel", endListener);
+      this.dragState = null;
+      this.hidePreview();
+    }
+
+    this.tokenData.delete(tokenId);
+    this.tokens.delete(tokenId);
+    this.removeChild(display.container);
+    display.container.destroy({ children: true, texture: false, baseTexture: false });
   }
 
   private handleDragStart(

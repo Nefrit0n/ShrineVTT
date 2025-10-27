@@ -2,15 +2,18 @@ import { nanoid } from "nanoid";
 
 import { getUserById } from "./authService.js";
 
+import { getConfig } from "#config/index.js";
 import { getDatabase } from "#storage/db.js";
 
 export const createSession = async (userId) => {
   const db = getDatabase();
   const token = nanoid(32);
+  const { defaultRoomId } = getConfig();
   const session = {
     id: token,
     userId,
     createdAt: new Date().toISOString(),
+    roomId: defaultRoomId,
   };
 
   db.data.sessions.push(session);
