@@ -19,6 +19,8 @@ type TokenDTO = {
   sprite: string | null;
   visibility: string;
   meta: Record<string, unknown>;
+  version: number;
+  updatedAt: string;
 };
 
 type SceneDTO = {
@@ -35,18 +37,22 @@ type SceneSnapshotPayload = {
   tokens?: TokenDTO[];
 };
 
-type TokenCreateAck =
-  | { ok: true; token: TokenDTO }
-  | { ok: false; error: string; code?: string; details?: unknown };
+type WsError = {
+  code: string;
+  message: string;
+  context: unknown | null;
+};
 
-type TokenMoveAck =
-  | { ok: true; token: TokenDTO }
-  | { ok: false; error: string; code?: string; details?: unknown };
+type TokenCreateAck = { ok: true; token: TokenDTO } | { ok: false; error: WsError };
+
+type TokenMoveAck = { ok: true; token: TokenDTO } | { ok: false; error: WsError };
 
 const httpStatusEl = document.querySelector<HTMLSpanElement>("#http-status");
 const wsStatusEl = document.querySelector<HTMLSpanElement>("#ws-status");
 const roleStatusEl = document.querySelector<HTMLSpanElement>("#role-status");
 const logContainer = document.querySelector<HTMLDivElement>("#event-log");
+const notificationsContainer =
+  document.querySelector<HTMLDivElement>("#notifications");
 const pingButton = document.querySelector<HTMLButtonElement>("#ping-button");
 const announceButton = document.querySelector<HTMLButtonElement>("#announce-button");
 const loginForm = document.querySelector<HTMLFormElement>("#login-form");
@@ -86,6 +92,87 @@ const appendLog = (message: string, payload?: unknown) => {
   const formatted = payload ? `${message}: ${JSON.stringify(payload)}` : message;
   entry.textContent = `[${formatTime()}] ${formatted}`;
   logContainer.prepend(entry);
+};
+
+const pushNotification = (
+  message: string,
+  { type = "info", code }: { type?: "info" | "error"; code?: string } = {}
+) => {
+  if (!notificationsContainer) {
+    return;
+  }
+
+  const item = document.createElement("div");
+  item.classList.add("notification", `notification--${type}`);
+
+  const text = document.createElement("span");
+  text.textContent = message;
+  item.append(text);
+
+  if (code) {
+    const codeBadge = document.createElement("span");
+    codeBadge.classList.add("notification__code");
+    codeBadge.textContent = code;
+    item.append(codeBadge);
+  }
+
+  notificationsContainer.append(item);
+
+  window.setTimeout(() => {
+    item.classList.add("notification--hide");
+    window.setTimeout(() => {
+      item.remove();
+    }, 300);
+  }, 4000);
+};
+
+const handleWsError = (error: WsError | undefined | null, scope: string) => {
+  if (!error) {
+    const message = `${scope}: неизвестная ошибка`;
+    pushNotification(message, { type: "error" });
+    appendLog(`${scope} error`, { message: "Unknown error" });
+    return;
+  }
+
+  pushNotification(error.message, { type: "error", code: error.code });
+  appendLog(`${scope} error`, {
+    message: error.message,
+    code: error.code,
+    context: error.context ?? null,
+  });
+};
+
+const shouldApplyTokenUpdate = (token: TokenDTO): boolean => {
+  const existing = tokens.get(token.id);
+  if (!existing) {
+    return true;
+  }
+
+  if (token.version > existing.version) {
+    return true;
+  }
+
+  if (token.version < existing.version) {
+    return false;
+  }
+
+  const incomingTime = new Date(token.updatedAt).getTime();
+  const existingTime = new Date(existing.updatedAt).getTime();
+
+  if (Number.isNaN(incomingTime) || Number.isNaN(existingTime)) {
+    return true;
+  }
+
+  return incomingTime >= existingTime;
+};
+
+const applyTokenUpdate = (token: TokenDTO) => {
+  if (!shouldApplyTokenUpdate(token)) {
+    return;
+  }
+
+  tokens.set(token.id, token);
+  stage?.upsertToken(toRenderToken(token));
 };
 
 const updateTokenControlsState = () => {
@@ -287,14 +374,14 @@ const connectSocket = () => {
       id: payload.token.id,
       sceneId: payload.token.sceneId,
       name: payload.token.name,
+      version: payload.token.version,
     });
 
     if (payload.token.sceneId !== currentSceneId) {
       return;
     }
 
-    tokens.set(payload.token.id, payload.token);
-    stage?.upsertToken(toRenderToken(payload.token));
+    applyTokenUpdate(payload.token);
   });
 
   socket.on("token.move:out", (payload: { token: TokenDTO }) => {
@@ -302,14 +389,18 @@ const connectSocket = () => {
       id: payload.token.id,
       xCell: payload.token.xCell,
       yCell: payload.token.yCell,
+      version: payload.token.version,
     });
 
     if (payload.token.sceneId !== currentSceneId) {
       return;
     }
 
-    tokens.set(payload.token.id, payload.token);
-    stage?.upsertToken(toRenderToken(payload.token));
+    applyTokenUpdate(payload.token);
+  });
+
+  socket.on("error", (error: WsError) => {
+    handleWsError(error, "WS");
   });
 };
 
@@ -434,11 +525,7 @@ tokenForm?.addEventListener("submit", (event) => {
 
   socket.emit("token.create:in", payload, (response: TokenCreateAck) => {
     if (!response?.ok) {
-      appendLog("TOKEN create error", {
-        message: response?.error ?? "Не удалось создать токен",
-        code: response?.code,
-        details: response?.details ?? undefined,
-      });
+      handleWsError(response?.error ?? null, "TOKEN create");
       return;
     }
 
@@ -446,7 +533,12 @@ tokenForm?.addEventListener("submit", (event) => {
       id: response.token.id,
       name: response.token.name,
       sceneId: response.token.sceneId,
+      version: response.token.version,
     });
+
+    if (response.token.sceneId === currentSceneId) {
+      applyTokenUpdate(response.token);
+    }
 
     if (tokenNameInput) {
       tokenNameInput.value = "";
@@ -545,15 +637,22 @@ const setupStage = async () => {
 
     socket.emit(
       "token.move:in",
-      { tokenId, xCell: target.xCell, yCell: target.yCell },
+      {
+        tokenId,
+        xCell: target.xCell,
+        yCell: target.yCell,
+        version: token.version,
+        updatedAt: token.updatedAt,
+      },
       (response: TokenMoveAck) => {
         if (!response?.ok) {
-          appendLog("TOKEN move error", {
-            id: tokenId,
-            message: response?.error ?? "Не удалось переместить токен",
-            code: response?.code,
-          });
+          handleWsError(response?.error ?? null, "TOKEN move");
           revert();
+          return;
+        }
+
+        if (response.token.sceneId === currentSceneId) {
+          applyTokenUpdate(response.token);
         }
       }
     );

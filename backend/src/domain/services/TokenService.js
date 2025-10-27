@@ -66,7 +66,12 @@ export class TokenService {
     return token;
   }
 
-  async moveToken(tokenId, { xCell, yCell }, requesterId) {
+  async moveToken(
+    tokenId,
+    { xCell, yCell },
+    requesterId,
+    { expectedVersion, expectedUpdatedAt } = {}
+  ) {
     const token = await this.tokenRepository.findById(tokenId);
     if (!token) {
       throw new DomainError(
@@ -80,6 +85,43 @@ export class TokenService {
         DomainError.codes.NOT_OWNER,
         `User ${requesterId} cannot manage token ${tokenId}`
       );
+    }
+
+    if (
+      typeof expectedVersion === "number" &&
+      Number.isFinite(expectedVersion) &&
+      expectedVersion !== token.version
+    ) {
+      throw new DomainError(
+        DomainError.codes.STALE_UPDATE,
+        "Token version mismatch",
+        {
+          expectedVersion,
+          currentVersion: token.version,
+        }
+      );
+    }
+
+    if (expectedUpdatedAt) {
+      const expectedDate = new Date(expectedUpdatedAt);
+      if (Number.isNaN(expectedDate.getTime())) {
+        throw new DomainError(
+          DomainError.codes.INVALID_UPDATE,
+          "expectedUpdatedAt must be a valid ISO date string"
+        );
+      }
+
+      const currentDate = new Date(token.updatedAt);
+      if (expectedDate.getTime() < currentDate.getTime()) {
+        throw new DomainError(
+          DomainError.codes.STALE_UPDATE,
+          "Token updatedAt is more recent than requested update",
+          {
+            expectedUpdatedAt,
+            currentUpdatedAt: token.updatedAt,
+          }
+        );
+      }
     }
 
     const scene = await this.sceneRepository.findById(token.sceneId);

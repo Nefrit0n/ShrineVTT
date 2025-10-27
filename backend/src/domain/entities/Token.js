@@ -39,6 +39,8 @@ export class Token {
     sprite = null,
     visibility = "PUBLIC",
     meta = {},
+    version = 1,
+    updatedAt = new Date().toISOString(),
   }) {
     ensureInteger(xCell, "xCell");
     ensureInteger(yCell, "yCell");
@@ -52,16 +54,21 @@ export class Token {
     this.sprite = sprite;
     this.visibility = visibility;
     this.meta = meta;
+    this.version = version;
+    this.updatedAt = updatedAt;
   }
 
   static create(props, scene) {
     const { xCell, yCell } = Token.normalisePosition(scene, props);
-    return new Token({ ...props, xCell, yCell });
+    const now = new Date().toISOString();
+    return new Token({ ...props, xCell, yCell, version: 1, updatedAt: now });
   }
 
   withPosition({ xCell, yCell }, scene) {
     const { xCell: normalisedX, yCell: normalisedY } =
       Token.normalisePosition(scene, { xCell, yCell });
+
+    const now = new Date().toISOString();
 
     return new Token({
       id: this.id,
@@ -73,6 +80,8 @@ export class Token {
       sprite: this.sprite,
       visibility: this.visibility,
       meta: this.meta,
+      version: this.version + 1,
+      updatedAt: now,
     });
   }
 
