@@ -28,6 +28,8 @@ const defaultData = {
   sessions: [],
   scenes: [],
   tokens: [],
+  actors: [],
+  items: [],
 };
 
 const ensureDefaults = (data) => {
@@ -35,6 +37,8 @@ const ensureDefaults = (data) => {
   data.sessions ??= [];
   data.scenes ??= [];
   data.tokens ??= [];
+  data.actors ??= [];
+  data.items ??= [];
 };
 
 const maybeSeedDatabase = (db, { seedTestScene, defaultRoomId }) => {

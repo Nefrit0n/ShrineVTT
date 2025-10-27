@@ -6,6 +6,8 @@ export class DomainError extends Error {
     NOT_FOUND: "NOT_FOUND",
     STALE_UPDATE: "STALE_UPDATE",
     INVALID_UPDATE: "INVALID_UPDATE",
+    INVALID_ACTOR: "INVALID_ACTOR",
+    INVALID_ITEM: "INVALID_ITEM",
   };
 
   constructor(code, message, details = undefined) {

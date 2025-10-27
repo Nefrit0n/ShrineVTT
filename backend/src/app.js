@@ -9,6 +9,8 @@ import { getConfig } from "#config/index.js";
 import authRouter from "#api/auth.js";
 import sessionRouter from "#api/session.js";
 import createScenesRouter from "#api/scenes.js";
+import createActorsRouter from "#api/actors.js";
+import createItemsRouter from "#api/items.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -38,6 +40,8 @@ export const createApp = (dependencies) => {
   app.use("/api/auth", authRouter);
   app.use("/api/session", sessionRouter);
   app.use("/api/scenes", createScenesRouter(dependencies));
+  app.use("/api/actors", createActorsRouter(dependencies));
+  app.use("/api/items", createItemsRouter(dependencies));
 
   const staticDir = path.join(__dirname, "../static");
   app.use(express.static(staticDir));
