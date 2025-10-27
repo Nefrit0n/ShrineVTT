@@ -3,9 +3,13 @@ import assert from "node:assert/strict";
 
 import { Scene } from "#domain/entities/Scene.js";
 import { Token } from "#domain/entities/Token.js";
+import { Actor } from "#domain/entities/Actor.js";
+import { Item } from "#domain/entities/Item.js";
 import { sceneToRecord } from "#domain/mappers/sceneMapper.js";
 import { SceneRepository } from "#infra/repositories/SceneRepository.js";
 import { TokenRepository } from "#infra/repositories/TokenRepository.js";
+import { ActorRepository } from "#infra/repositories/ActorRepository.js";
+import { ItemRepository } from "#infra/repositories/ItemRepository.js";
 
 class InMemoryDatabase {
   constructor(initialData = {}) {
@@ -160,4 +164,91 @@ test("TokenRepository stores tokens scoped by room and scene", async () => {
   assert.equal(deleted, true);
   const missing = await repo.findById(tokenA2.id);
   assert.equal(missing, null);
+});
+
+test("ActorRepository stores and filters actors by owner", async () => {
+  const db = new InMemoryDatabase({ actors: [] });
+  const repo = new ActorRepository(db);
+
+  const actorA = new Actor({
+    id: "actor-1",
+    name: "Arannis",
+    ownerUserId: "player-1",
+    abilities: { STR: 12, DEX: 14, CON: 13, INT: 10, WIS: 11, CHA: 9 },
+    profBonus: 2,
+    maxHP: 18,
+    ac: 16,
+    items: ["item-1"],
+  });
+
+  const actorB = new Actor({
+    id: "actor-2",
+    name: "Belinda",
+    ownerUserId: "player-2",
+    abilities: { STR: 8, DEX: 12, CON: 10, INT: 14, WIS: 15, CHA: 13 },
+    profBonus: 3,
+    maxHP: 22,
+    ac: 17,
+  });
+
+  await repo.create(actorA);
+  await repo.create(actorB);
+
+  const fetched = await repo.findById(actorA.id);
+  assert.equal(fetched?.name, "Arannis");
+
+  const byOwner = await repo.listByOwner("player-1");
+  assert.equal(byOwner.length, 1);
+  assert.equal(byOwner[0].id, actorA.id);
+
+  const paginated = await repo.list({ offset: 1, limit: 1 });
+  assert.equal(paginated.length, 1);
+
+  const updated = actorA.withUpdates({ maxHP: 20 });
+  await repo.update(updated);
+  const fetchedUpdated = await repo.findById(actorA.id);
+  assert.equal(fetchedUpdated?.maxHP, 20);
+
+  const deleted = await repo.delete(actorB.id);
+  assert.equal(deleted, true);
+  assert.equal(await repo.findById(actorB.id), null);
+});
+
+test("ItemRepository provides CRUD with pagination", async () => {
+  const db = new InMemoryDatabase({ items: [] });
+  const repo = new ItemRepository(db);
+
+  const sword = new Item({
+    id: "item-1",
+    name: "Longsword",
+    type: "weapon",
+    data: { damage: "1d8", ability: "STR" },
+  });
+
+  const rope = new Item({
+    id: "item-2",
+    name: "Silk Rope",
+    type: "gear",
+    data: { length: 50 },
+  });
+
+  await repo.create(sword);
+  await repo.create(rope);
+
+  const fetched = await repo.findById("item-1");
+  assert.equal(fetched?.data.damage, "1d8");
+
+  const list = await repo.list({ offset: 0, limit: 1 });
+  assert.equal(list.length, 1);
+
+  const updated = sword.withUpdates({
+    data: { damage: "1d8", ability: "DEX", finesse: true },
+  });
+  await repo.update(updated);
+  const fetchedUpdated = await repo.findById("item-1");
+  assert.equal(fetchedUpdated?.data.ability, "DEX");
+
+  const deleted = await repo.delete("item-2");
+  assert.equal(deleted, true);
+  assert.equal(await repo.findById("item-2"), null);
 });
