@@ -1,5 +1,7 @@
 import { io, type Socket } from "socket.io-client";
 import { PixiStage } from "./canvas/PixiStage";
+import { CanvasToolbar } from "./ui/Toolbar";
+import { toast } from "./ui/Toast";
 import type { MapDescriptor } from "./canvas/layers/MapLayer";
 import type { TokenMoveDebugInfo, TokenRenderData } from "./canvas/layers/TokensLayer";
 import type {
@@ -22,12 +24,16 @@ type WsStatus = "connected" | "disconnected" | "error";
 
 type HttpStatus = "online" | "offline" | "error";
 
+const layout = document.querySelector<HTMLElement>("#app-layout");
+const panel = document.querySelector<HTMLElement>("#control-panel");
+const panelToggle = document.querySelector<HTMLButtonElement>("#panel-toggle");
 const httpStatusEl = document.querySelector<HTMLSpanElement>("#http-status");
 const wsStatusEl = document.querySelector<HTMLSpanElement>("#ws-status");
 const roleStatusEl = document.querySelector<HTMLSpanElement>("#role-status");
+const roleBadgeEl = document.querySelector<HTMLSpanElement>("#role-badge");
+const statusGridEl = document.querySelector<HTMLSpanElement>("#status-grid");
+const statusZoomEl = document.querySelector<HTMLSpanElement>("#status-zoom");
 const logContainer = document.querySelector<HTMLDivElement>("#event-log");
-const notificationsContainer =
-  document.querySelector<HTMLDivElement>("#notifications");
 const pingButton = document.querySelector<HTMLButtonElement>("#ping-button");
 const announceButton = document.querySelector<HTMLButtonElement>("#announce-button");
 const loginForm = document.querySelector<HTMLFormElement>("#login-form");
@@ -35,7 +41,10 @@ const tokenForm = document.querySelector<HTMLFormElement>("#token-form");
 const tokenControls = document.querySelector<HTMLFieldSetElement>("#token-controls");
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
 const gridToggle = document.querySelector<HTMLInputElement>("#grid-toggle");
-const scaleIndicator = document.querySelector<HTMLSpanElement>("#scale-indicator");
+const highContrastToggle = document.querySelector<HTMLInputElement>("#grid-contrast-toggle");
+const scaleStatus = document.querySelector<HTMLSpanElement>("#scale-status");
+const toolbarContainer = document.querySelector<HTMLElement>("#canvas-toolbar");
+const zoomOverlay = document.querySelector<HTMLElement>("#zoom-overlay");
 const tokenNameInput = tokenForm?.querySelector<HTMLInputElement>("input[name=\"name\"]");
 const tokenOwnerInput = tokenForm?.querySelector<HTMLInputElement>(
   "input[name=\"ownerUserId\"]"
@@ -50,6 +59,7 @@ let authToken: string | null = window.sessionStorage.getItem("shrinevtt:token");
 const storedRole = window.sessionStorage.getItem("shrinevtt:role");
 let currentRole: ServerRole = storedRole === "MASTER" || storedRole === "PLAYER" ? storedRole : null;
 let stage: PixiStage | null = null;
+let toolbar: CanvasToolbar | null = null;
 const storedUserId = window.sessionStorage.getItem("shrinevtt:userId");
 let currentUserId: string | null = storedUserId && storedUserId.trim() ? storedUserId : null;
 const tokens = new Map<string, TokenDTO>();
@@ -98,53 +108,156 @@ const appendLog = (message: string, payload?: unknown) => {
   logContainer.prepend(entry);
 };
 
-const pushNotification = (
-  message: string,
-  { type = "info", code }: { type?: "info" | "error"; code?: string } = {}
-) => {
-  if (!notificationsContainer) {
+const panelSectionToggles = Array.from(
+  document.querySelectorAll<HTMLButtonElement>(".panel-section__toggle")
+);
+
+for (const toggle of panelSectionToggles) {
+  const section = toggle.closest(".panel-section");
+  if (!section) {
+    continue;
+  }
+
+  toggle.addEventListener("click", () => {
+    section.classList.toggle("is-collapsed");
+  });
+}
+
+if (panelToggle && layout) {
+  panelToggle.addEventListener("click", () => {
+    const collapsed = layout.classList.toggle("is-panel-collapsed");
+    panelToggle.setAttribute("aria-expanded", (!collapsed).toString());
+    panelToggle.textContent = collapsed ? "»«" : "«»";
+  });
+}
+
+type ToolbarSnapshot = {
+  zoomPercent: number;
+  gridEnabled: boolean;
+  snapEnabled: boolean;
+};
+
+const reflectToolbarState = (state: ToolbarSnapshot) => {
+  if (scaleStatus) {
+    scaleStatus.textContent = `${state.zoomPercent}%`;
+  }
+  if (statusZoomEl) {
+    statusZoomEl.textContent = `${state.zoomPercent}%`;
+  }
+  if (statusGridEl) {
+    statusGridEl.textContent = state.gridEnabled ? "on" : "off";
+  }
+  if (gridToggle) {
+    gridToggle.checked = state.gridEnabled;
+  }
+};
+
+const syncToolbarState = () => {
+  if (!stage) {
     return;
   }
 
-  const item = document.createElement("div");
-  item.classList.add("notification", `notification--${type}`);
+  const state: ToolbarSnapshot = {
+    zoomPercent: Math.round(stage.getScale() * 100),
+    gridEnabled: stage.isGridVisible(),
+    snapEnabled: stage.isSnapEnabled(),
+  };
 
-  const text = document.createElement("span");
-  text.textContent = message;
-  item.append(text);
-
-  if (code) {
-    const codeBadge = document.createElement("span");
-    codeBadge.classList.add("notification__code");
-    codeBadge.textContent = code;
-    item.append(codeBadge);
+  if (toolbar) {
+    toolbar.updateState(state);
+  } else {
+    reflectToolbarState(state);
   }
-
-  notificationsContainer.append(item);
-
-  window.setTimeout(() => {
-    item.classList.add("notification--hide");
-    window.setTimeout(() => {
-      item.remove();
-    }, 300);
-  }, 4000);
 };
 
 const handleWsError = (error: WsError | undefined | null, scope: string) => {
+  const fallbackMessage = `${scope}: неизвестная ошибка`;
+
   if (!error) {
-    const message = `${scope}: неизвестная ошибка`;
-    pushNotification(message, { type: "error" });
+    toast.error(fallbackMessage);
     appendLog(`${scope} error`, { message: "Unknown error" });
     return;
   }
 
-  pushNotification(error.message, { type: "error", code: error.code });
+  const message = error.message ?? fallbackMessage;
+  const code = error.code ?? "unknown";
+  const isWarning = code === "out_of_bounds" || code === "stale_update";
+
+  if (code === "out_of_bounds") {
+    toast.warn(message);
+  } else if (isWarning) {
+    toast.warn(message);
+  } else {
+    toast.error(message);
+  }
+
   appendLog(`${scope} error`, {
-    message: error.message,
-    code: error.code,
+    message,
+    code,
     context: error.context ?? null,
   });
 };
+
+const shouldSkipHotkeys = (event: KeyboardEvent): boolean => {
+  const target = event.target as HTMLElement | null;
+  if (!target) {
+    return false;
+  }
+
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+    return true;
+  }
+
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  return event.metaKey || event.ctrlKey || event.altKey;
+};
+
+window.addEventListener("keydown", (event) => {
+  if (!stage) {
+    return;
+  }
+
+  if (shouldSkipHotkeys(event)) {
+    return;
+  }
+
+  switch (event.key) {
+    case "+":
+    case "=":
+      event.preventDefault();
+      stage.zoomIn();
+      return;
+    case "-":
+    case "_":
+      event.preventDefault();
+      stage.zoomOut();
+      return;
+    case "f":
+    case "F":
+      event.preventDefault();
+      stage.fitToView();
+      syncToolbarState();
+      return;
+    case "g":
+    case "G":
+      event.preventDefault();
+      stage.toggleGrid();
+      syncToolbarState();
+      return;
+    case "s":
+    case "S":
+      event.preventDefault();
+      stage.toggleSnap();
+      syncToolbarState();
+      return;
+    default:
+      break;
+  }
+});
 
 const dispatchMoveRequest = (tokenId: string, request: PendingMoveRequest) => {
   const token = tokens.get(tokenId);
@@ -397,6 +510,14 @@ const updateRole = (role: ServerRole) => {
   if (roleStatusEl) {
     roleStatusEl.textContent = role ?? "—";
   }
+  if (roleBadgeEl) {
+    roleBadgeEl.textContent = role ?? "—";
+  }
+  if (role) {
+    window.sessionStorage.setItem("shrinevtt:role", role);
+  } else {
+    window.sessionStorage.removeItem("shrinevtt:role");
+  }
   if (announceButton) {
     announceButton.disabled = role !== "MASTER";
   }
@@ -454,6 +575,11 @@ const connectSocket = () => {
   socket.on("connected", (payload: ConnectedMessage) => {
     updateUserId(payload.user?.id ?? currentUserId);
     updateRole(payload?.role ?? null);
+    if (payload?.role) {
+      toast.info(`Подключено как ${payload.role}`);
+    } else {
+      toast.info("Подключено");
+    }
     appendLog("Handshake", payload);
   });
 
@@ -532,11 +658,13 @@ const authenticate = async (username: string, password: string) => {
     window.sessionStorage.setItem("shrinevtt:role", result.user?.role ?? "");
     appendLog("HTTP login", result.user);
     updateHttpStatus("online");
+    toast.info("Авторизация успешна");
     connectSocket();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     appendLog("Login error", { message });
     updateHttpStatus("error");
+    toast.error(message);
   }
 };
 
@@ -645,6 +773,8 @@ tokenForm?.addEventListener("submit", (event) => {
       applyTokenUpdate(response.token);
     }
 
+    toast.info("Токен добавлен на сцену");
+
     if (tokenNameInput) {
       tokenNameInput.value = "";
     }
@@ -708,17 +838,42 @@ const setupStage = async () => {
     ? { url: mapUrl, fallbackColor: 0x1b1b1b }
     : { fallbackColor: 0x1b1b1b, fallbackSize: { width: 2048, height: 2048 } };
 
+  const initialGrid = gridToggle?.checked ?? true;
+
   stage = await PixiStage.create({
     canvas,
     gridSize: 64,
-    showGrid: gridToggle?.checked ?? true,
+    showGrid: initialGrid,
     map: mapDescriptor,
     onScaleChange: (value) => {
-      if (scaleIndicator) {
-        scaleIndicator.textContent = `${Math.round(value * 100)}%`;
+      const percent = Math.round(value * 100);
+      const gridEnabled = stage?.isGridVisible() ?? initialGrid;
+      const snapEnabled = stage?.isSnapEnabled() ?? true;
+      if (toolbar) {
+        toolbar.setZoom(percent);
+        toolbar.showZoomOverlay(percent);
       }
+      reflectToolbarState({ zoomPercent: percent, gridEnabled, snapEnabled });
     },
   });
+
+  const initialState: ToolbarSnapshot = {
+    zoomPercent: Math.round(stage.getScale() * 100),
+    gridEnabled: stage.isGridVisible(),
+    snapEnabled: stage.isSnapEnabled(),
+  };
+
+  if (toolbarContainer && zoomOverlay) {
+    toolbar = new CanvasToolbar({
+      stage,
+      container: toolbarContainer,
+      overlay: zoomOverlay,
+      initialState,
+      onStateChange: reflectToolbarState,
+    });
+  }
+
+  reflectToolbarState(initialState);
 
   if (pendingSnapshot) {
     const snapshot = pendingSnapshot;
@@ -728,7 +883,17 @@ const setupStage = async () => {
 
   if (gridToggle) {
     gridToggle.addEventListener("change", () => {
-      stage?.setGridVisible(gridToggle.checked);
+      if (!stage) {
+        return;
+      }
+      stage.setGridVisible(gridToggle.checked);
+      syncToolbarState();
+    });
+  }
+
+  if (highContrastToggle) {
+    highContrastToggle.addEventListener("change", () => {
+      stage?.setHighContrastGrid(highContrastToggle.checked);
     });
   }
 
@@ -737,10 +902,6 @@ const setupStage = async () => {
   });
 
   refreshTokenPermissions();
-
-  if (scaleIndicator) {
-    scaleIndicator.textContent = `${Math.round(stage.getScale() * 100)}%`;
-  }
 };
 
 void setupStage();

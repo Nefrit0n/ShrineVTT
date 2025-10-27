@@ -7,97 +7,148 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="layout">
-      <section class="panel">
-        <h1>ShrineVTT</h1>
-        <div id="notifications" class="notifications" aria-live="polite"></div>
-        <form id="login-form">
-          <fieldset>
-            <legend>Авторизация</legend>
-            <label>
-              Логин
-              <input
-                type="text"
-                name="username"
-                placeholder="master"
-                required
-              />
-            </label>
-            <label>
-              Пароль
-              <input
-                type="password"
-                name="password"
-                placeholder="masterpass"
-                required
-              />
-            </label>
-            <button type="submit">Войти</button>
-          </fieldset>
-        </form>
-        <div class="status">
-          <h2>Состояние</h2>
-          <ul>
-            <li>HTTP: <span id="http-status">offline</span></li>
-            <li>WebSocket: <span id="ws-status">disconnected</span></li>
-            <li>Роль: <span id="role-status">—</span></li>
-          </ul>
-        </div>
-        <div class="actions">
-          <button id="ping-button" type="button" disabled>
-            Отправить ping
+    <main class="layout" id="app-layout">
+      <aside class="panel" id="control-panel">
+        <header class="panel__header">
+          <h1>ShrineVTT</h1>
+          <span class="role-badge" id="role-badge">—</span>
+          <button
+            type="button"
+            class="panel__collapse"
+            id="panel-toggle"
+            aria-label="Свернуть панель"
+            aria-expanded="true"
+          >
+            «»
           </button>
-          <button id="announce-button" type="button" disabled>
-            Отправить объявление (MASTER)
-          </button>
-        </div>
-        <form id="token-form" class="token-form">
-          <fieldset id="token-controls" disabled>
-            <legend>Токены (MASTER)</legend>
-            <label>
-              ID сцены
-              <input type="text" name="sceneId" placeholder="scene-id" required />
-            </label>
-            <label>
-              Имя токена
-              <input type="text" name="name" placeholder="Герой" required />
-            </label>
-            <label>
-              ID владельца (опционально)
-              <input type="text" name="ownerUserId" placeholder="player-1" />
-            </label>
-            <label>
-              URL спрайта (опционально)
-              <input
-                type="text"
-                name="sprite"
-                placeholder="https://example.com/token.png"
-              />
-            </label>
-            <div class="token-form-grid">
-              <label>
-                Клетка X
-                <input type="number" name="xCell" required />
-              </label>
-              <label>
-                Клетка Y
-                <input type="number" name="yCell" required />
-              </label>
+        </header>
+        <div class="panel__sections">
+          <section class="panel-section" data-section="connection">
+            <button class="panel-section__toggle" type="button">
+              <span>Подключение</span>
+              <span class="panel-section__chevron">⌄</span>
+            </button>
+            <div class="panel-section__content">
+              <form id="login-form" class="login-form">
+                <fieldset>
+                  <label>
+                    Логин
+                    <input type="text" name="username" placeholder="master" required />
+                  </label>
+                  <label>
+                    Пароль
+                    <input type="password" name="password" placeholder="masterpass" required />
+                  </label>
+                  <button class="btn btn--primary" type="submit">Войти</button>
+                </fieldset>
+              </form>
+              <div class="connection-status" aria-live="polite">
+                <div class="connection-status__item">
+                  <span>HTTP</span>
+                  <strong id="http-status">offline</strong>
+                </div>
+                <div class="connection-status__item">
+                  <span>WebSocket</span>
+                  <strong id="ws-status">disconnected</strong>
+                </div>
+              </div>
+              <div class="actions-stack">
+                <button class="btn btn--secondary" id="ping-button" type="button" disabled>
+                  Отправить ping
+                </button>
+                <button class="btn btn--secondary" id="announce-button" type="button" disabled>
+                  Отправить объявление (MASTER)
+                </button>
+              </div>
             </div>
-            <button type="submit">Добавить токен</button>
-          </fieldset>
-        </form>
-        <div class="log" id="event-log"></div>
-      </section>
-      <section class="canvas-container">
-        <div class="canvas-controls">
-          <label class="canvas-toggle">
-            <input type="checkbox" id="grid-toggle" checked />
-            <span>Показывать сетку</span>
-          </label>
-          <div class="canvas-scale">Масштаб: <span id="scale-indicator">100%</span></div>
+          </section>
+          <section class="panel-section" data-section="scene">
+            <button class="panel-section__toggle" type="button">
+              <span>Сцена</span>
+              <span class="panel-section__chevron">⌄</span>
+            </button>
+            <div class="panel-section__content">
+              <div class="toggle-row">
+                <label for="grid-toggle">Сетка</label>
+                <input type="checkbox" id="grid-toggle" checked />
+              </div>
+              <div class="toggle-row">
+                <label for="grid-contrast-toggle">Высококонтрастная сетка</label>
+                <input type="checkbox" id="grid-contrast-toggle" />
+              </div>
+              <div class="toggle-row">
+                <span>Масштаб</span>
+                <strong id="scale-status">100%</strong>
+              </div>
+            </div>
+          </section>
+          <section class="panel-section" data-section="tokens">
+            <button class="panel-section__toggle" type="button">
+              <span>Токены</span>
+              <span class="panel-section__chevron">⌄</span>
+            </button>
+            <div class="panel-section__content">
+              <form id="token-form" class="token-form">
+                <fieldset id="token-controls" disabled>
+                  <label>
+                    ID сцены
+                    <input type="text" name="sceneId" placeholder="scene-id" required />
+                  </label>
+                  <label>
+                    Имя токена
+                    <input type="text" name="name" placeholder="Герой" required />
+                  </label>
+                  <label>
+                    ID владельца (опционально)
+                    <input type="text" name="ownerUserId" placeholder="player-1" />
+                  </label>
+                  <label>
+                    URL спрайта (опционально)
+                    <input
+                      type="text"
+                      name="sprite"
+                      placeholder="https://example.com/token.png"
+                    />
+                  </label>
+                  <div class="form-grid">
+                    <label>
+                      Клетка X
+                      <input type="number" name="xCell" required />
+                    </label>
+                    <label>
+                      Клетка Y
+                      <input type="number" name="yCell" required />
+                    </label>
+                  </div>
+                  <button class="btn btn--primary token-form__submit" type="submit">
+                    Добавить токен
+                  </button>
+                </fieldset>
+              </form>
+            </div>
+          </section>
+          <section class="panel-section" data-section="debug">
+            <button class="panel-section__toggle" type="button">
+              <span>Отладка</span>
+              <span class="panel-section__chevron">⌄</span>
+            </button>
+            <div class="panel-section__content">
+              <div class="log" id="event-log"></div>
+            </div>
+          </section>
         </div>
-        <canvas id="scene"></canvas>
+      </aside>
+      <section class="canvas-shell">
+        <div class="scene-viewport" id="scene-viewport">
+          <canvas id="scene"></canvas>
+          <div class="canvas-toolbar" id="canvas-toolbar" role="toolbar" aria-label="Управление сценой"></div>
+          <div class="canvas-zoom-overlay" id="zoom-overlay">100%</div>
+        </div>
+        <div class="status-bar">
+          <span>Роль: <strong id="role-status">—</strong></span>
+          <span>Зум: <strong id="status-zoom">100%</strong></span>
+          <span>Сетка: <strong id="status-grid">on</strong></span>
+        </div>
       </section>
     </main>
     <script type="module" src="./main.ts"></script>
