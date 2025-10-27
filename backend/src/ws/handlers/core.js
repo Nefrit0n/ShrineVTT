@@ -85,7 +85,7 @@ function handlePing(socket, envelope, logger) {
     socket,
     CORE_PONG,
     { ts },
-    { rid },
+    { rid, ts },
   );
 
   logger.info(
