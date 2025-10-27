@@ -9,12 +9,14 @@ import { getConfig } from "#config/index.js";
 import authRouter from "#api/auth.js";
 import sessionRouter from "#api/session.js";
 import createScenesRouter from "#api/scenes.js";
-import { createApplicationContainer } from "#application/container.js";
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const createApp = (dependencies = createApplicationContainer()) => {
+export const createApp = (dependencies) => {
+  if (!dependencies) {
+    throw new Error("Application dependencies must be provided to createApp");
+  }
+
   const app = express();
   const config = getConfig();
 
@@ -55,6 +57,4 @@ export const createApp = (dependencies = createApplicationContainer()) => {
   return app;
 };
 
-const app = createApp();
-
-export default app;
+export default createApp;

@@ -18,7 +18,8 @@ const { createApplicationContainer } = await import("../src/application/containe
 const { createApp } = await import("../src/app.js");
 const { initSocketServer } = await import("#socket/index.js");
 
-const container = createApplicationContainer();
+const db = getDatabase();
+const container = createApplicationContainer({ db });
 const app = createApp(container);
 
 const server = createServer(app);

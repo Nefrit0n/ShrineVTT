@@ -74,6 +74,10 @@ cp .env.example .env
 
 HTTP-приложение доступно по `http://localhost:8080`. После логина (см. учётные данные выше) фронтенд подключится к WebSocket и покажет ответы `pong`.
 
+## Bootstrap backend
+
+Backend стартует командой `node backend/src/server.js`, которая вызывает `bootstrap()`. Последовательность: `initDatabase()` инициализирует LowDB, затем `createApplicationContainer({ db })` собирает зависимости, `createApp(container)` строит Express-приложение, после чего HTTP и Socket.IO серверы запускаются и подписываются на `SIGINT/SIGTERM` для плавного останова и финальной синхронизации данных. Проверить цепочку можно smoke-тестом `npm run test:smoke`, который поднимает сервер, вызывает `/health` и завершает процесс через `close()`.
+
 ## Проверки качества
 
 ```bash
