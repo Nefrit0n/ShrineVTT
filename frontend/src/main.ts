@@ -1,51 +1,26 @@
 import { io, type Socket } from "socket.io-client";
 import { PixiStage } from "./canvas/PixiStage";
-import type { MapDescriptor } from "./canvas/MapLayer";
-import type { TokenRenderData } from "./canvas/TokensLayer";
+import type { MapDescriptor } from "./canvas/layers/MapLayer";
+import type { TokenRenderData } from "./canvas/layers/TokensLayer";
+import type {
+  ConnectedMessage,
+  SceneDTO,
+  SceneSnapshotMessage,
+  TokenCreateAck,
+  TokenCreateIn,
+  TokenCreateOut,
+  TokenDTO,
+  TokenMoveAck,
+  TokenMoveIn,
+  TokenMoveOut,
+  WsError,
+} from "./types/ws";
 
 type ServerRole = "MASTER" | "PLAYER" | null;
 
 type WsStatus = "connected" | "disconnected" | "error";
 
 type HttpStatus = "online" | "offline" | "error";
-
-type TokenDTO = {
-  id: string;
-  sceneId: string;
-  ownerUserId: string | null;
-  name: string;
-  xCell: number;
-  yCell: number;
-  sprite: string | null;
-  visibility: string;
-  meta: Record<string, unknown>;
-  version: number;
-  updatedAt: string;
-};
-
-type SceneDTO = {
-  id: string;
-  name: string;
-  gridSize: number;
-  mapImage: string | null;
-  widthPx: number;
-  heightPx: number;
-};
-
-type SceneSnapshotPayload = {
-  scene: SceneDTO | null;
-  tokens?: TokenDTO[];
-};
-
-type WsError = {
-  code: string;
-  message: string;
-  context: unknown | null;
-};
-
-type TokenCreateAck = { ok: true; token: TokenDTO } | { ok: false; error: WsError };
-
-type TokenMoveAck = { ok: true; token: TokenDTO } | { ok: false; error: WsError };
 
 const httpStatusEl = document.querySelector<HTMLSpanElement>("#http-status");
 const wsStatusEl = document.querySelector<HTMLSpanElement>("#ws-status");
@@ -343,16 +318,13 @@ const connectSocket = () => {
     appendLog("WS error", { message: err.message });
   });
 
-  socket.on(
-    "connected",
-    (payload: { role?: ServerRole; user?: { id?: string; username?: string } }) => {
-      updateUserId(payload.user?.id ?? currentUserId);
-      updateRole(payload?.role ?? null);
-      appendLog("Handshake", payload);
-    }
-  );
+  socket.on("connected", (payload: ConnectedMessage) => {
+    updateUserId(payload.user?.id ?? currentUserId);
+    updateRole(payload?.role ?? null);
+    appendLog("Handshake", payload);
+  });
 
-  socket.on("scene.snapshot", (payload: SceneSnapshotPayload) => {
+  socket.on("scene.snapshot", (payload: SceneSnapshotMessage) => {
     const sceneTokens = Array.isArray(payload.tokens) ? payload.tokens : [];
     appendLog("SCENE snapshot", {
       sceneId: payload.scene?.id ?? null,
@@ -369,7 +341,7 @@ const connectSocket = () => {
     appendLog("ANNOUNCEMENT", payload);
   });
 
-  socket.on("token.create:out", (payload: { token: TokenDTO }) => {
+  socket.on("token.create:out", (payload: TokenCreateOut) => {
     appendLog("TOKEN create", {
       id: payload.token.id,
       sceneId: payload.token.sceneId,
@@ -384,7 +356,7 @@ const connectSocket = () => {
     applyTokenUpdate(payload.token);
   });
 
-  socket.on("token.move:out", (payload: { token: TokenDTO }) => {
+  socket.on("token.move:out", (payload: TokenMoveOut) => {
     appendLog("TOKEN move", {
       id: payload.token.id,
       xCell: payload.token.xCell,
@@ -508,7 +480,7 @@ tokenForm?.addEventListener("submit", (event) => {
   const ownerRaw = formData.get("ownerUserId");
   const spriteRaw = formData.get("sprite");
 
-  const payload: Record<string, unknown> = {
+  const payload: TokenCreateIn = {
     sceneId: sceneIdRaw.trim(),
     name: nameRaw.trim(),
     xCell,
@@ -635,15 +607,17 @@ const setupStage = async () => {
       return;
     }
 
+    const payload: TokenMoveIn = {
+      tokenId,
+      xCell: target.xCell,
+      yCell: target.yCell,
+      version: token.version,
+      updatedAt: token.updatedAt,
+    };
+
     socket.emit(
       "token.move:in",
-      {
-        tokenId,
-        xCell: target.xCell,
-        yCell: target.yCell,
-        version: token.version,
-        updatedAt: token.updatedAt,
-      },
+      payload,
       (response: TokenMoveAck) => {
         if (!response?.ok) {
           handleWsError(response?.error ?? null, "TOKEN move");

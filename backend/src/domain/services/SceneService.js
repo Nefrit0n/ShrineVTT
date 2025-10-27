@@ -48,4 +48,16 @@ export class SceneService {
     await this.sceneRepository.update(updated);
     return updated;
   }
+
+  async listScenesByRoom(roomId, pagination = {}) {
+    return this.sceneRepository.listByRoom(roomId, pagination);
+  }
+
+  async getActiveSceneForRoom(roomId) {
+    const [scene] = await this.sceneRepository.listByRoom(roomId, {
+      offset: 0,
+      limit: 1,
+    });
+    return scene ?? null;
+  }
 }

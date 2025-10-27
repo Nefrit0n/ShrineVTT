@@ -136,4 +136,8 @@ export class TokenService {
     await this.tokenRepository.update(updated);
     return updated;
   }
+
+  async listByScene(sceneId, pagination = {}) {
+    return this.tokenRepository.listByScene(sceneId, pagination);
+  }
 }

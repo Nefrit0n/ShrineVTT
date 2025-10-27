@@ -6,9 +6,10 @@
   "imports": {
     "#config/*": "./backend/src/config/*",
     "#auth/*": "./backend/src/auth/*",
-    "#routes/*": "./backend/src/routes/*",
+    "#api/*": "./backend/src/api/*",
+    "#application/*": "./backend/src/application/*",
     "#storage/*": "./backend/src/storage/*",
-    "#ws/*": "./backend/src/ws/*",
+    "#socket/*": "./backend/src/socket/*",
     "#domain/*": "./backend/src/domain/*",
     "#infra/*": "./backend/src/infra/*"
   },
@@ -40,6 +41,7 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",
     "prettier": "^3.3.3",
-    "globals": "^15.9.0"
+    "globals": "^15.9.0",
+    "socket.io-client": "^4.7.5"
   }
 }

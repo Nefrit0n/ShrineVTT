@@ -11,6 +11,36 @@ ShrineVTT — минимальный каркас виртуального иг�
 - **Хранилище** — `lowdb` (JSON) с хранением в каталоге данных (`DATA_DIR`).
 - **Docker** — мультистейдж-образ, собирающий фронтенд и backend, плюс `docker-compose.yml` для запуска одним контейнером.
 - **Качество** — ESLint (flat config) и Prettier, npm-скрипты `lint`, `format`, `dev`, `start`, `build`.
+- **Модульная архитектура** — backend разделён на слои `api`, `application`, `domain`, `infra`, `socket`; канвас фронтенда построен из независимых слоёв.
+
+## Архитектура модулей
+
+```mermaid
+graph LR
+  subgraph API
+    Rest[REST handlers]
+  end
+  subgraph Socket
+    WsHandlers[Socket.IO handlers]
+  end
+  subgraph Application
+    UseCases[Use-cases (Scenes & Tokens)]
+  end
+  subgraph Domain
+    Services[Domain services]
+    Entities[Entities]
+  end
+  subgraph Infra
+    Repositories[Repositories]
+  end
+  Storage[(LowDB)]
+
+  Rest --> UseCases
+  WsHandlers --> UseCases
+  UseCases --> Services
+  Services --> Repositories
+  Repositories --> Storage
+```
 
 ## Подготовка окружения
 

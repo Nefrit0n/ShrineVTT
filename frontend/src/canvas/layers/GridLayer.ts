@@ -1,30 +1,32 @@
-import { Container, Graphics } from "pixi.js";
+import { Graphics, type Container as PixiContainer } from "pixi.js";
 
-type GridState = {
+import { BaseCanvasLayer } from "./CanvasLayer";
+
+export type GridState = {
   scale: number;
   position: { x: number; y: number };
   viewportWidth: number;
   viewportHeight: number;
 };
 
-export class GridLayer extends Container {
+export class GridLayer extends BaseCanvasLayer {
   private gridSize: number;
   private readonly graphics: Graphics;
-  private lastState: {
-    startX: number;
-    endX: number;
-    startY: number;
-    endY: number;
-    scale: number;
-  } | null = null;
+  private lastState:
+    | {
+        startX: number;
+        endX: number;
+        startY: number;
+        endY: number;
+        scale: number;
+      }
+    | null = null;
 
   constructor(gridSize: number) {
-    super();
+    super({ eventMode: "none" });
     this.gridSize = gridSize;
     this.graphics = new Graphics();
-    this.addChild(this.graphics);
-    this.sortableChildren = false;
-    this.eventMode = "none";
+    this.container.addChild(this.graphics);
   }
 
   public setGridSize(gridSize: number): void {
@@ -36,8 +38,12 @@ export class GridLayer extends Container {
     this.lastState = null;
   }
 
+  public setVisible(visible: boolean): void {
+    this.container.visible = visible;
+  }
+
   public update(state: GridState): void {
-    if (!this.visible) {
+    if (!this.container.visible) {
       return;
     }
 
@@ -93,5 +99,10 @@ export class GridLayer extends Container {
       this.graphics.moveTo(verticalStart, y);
       this.graphics.lineTo(verticalEnd, y);
     }
+  }
+
+  public override attach(stage: PixiContainer): void {
+    super.attach(stage);
+    this.container.sortableChildren = false;
   }
 }
