@@ -168,7 +168,7 @@ const dispatchMoveRequest = (tokenId: string, request: PendingMoveRequest) => {
     tokenId,
     xCell: request.target.xCell,
     yCell: request.target.yCell,
-    version: nextVersion,
+    version: confirmedVersion,
     updatedAt: token.updatedAt,
   };
 
