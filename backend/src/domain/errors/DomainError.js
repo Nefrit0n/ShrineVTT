@@ -4,6 +4,8 @@ export class DomainError extends Error {
     INVALID_GRID: "INVALID_GRID",
     NOT_OWNER: "NOT_OWNER",
     NOT_FOUND: "NOT_FOUND",
+    STALE_UPDATE: "STALE_UPDATE",
+    INVALID_UPDATE: "INVALID_UPDATE",
   };
 
   constructor(code, message, details = undefined) {

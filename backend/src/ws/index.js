@@ -11,6 +11,9 @@ import { SceneRepository } from "#infra/repositories/SceneRepository.js";
 import { TokenRepository } from "#infra/repositories/TokenRepository.js";
 import { getDatabase } from "#storage/db.js";
 
+const TOKEN_MOVE_RATE_LIMIT_WINDOW_MS = 1000;
+const TOKEN_MOVE_RATE_LIMIT_MAX = 20;
+
 const parseTokenCreatePayload = (payload = {}) => {
   const errors = {};
   const data = {};
@@ -99,6 +102,31 @@ const parseTokenMovePayload = (payload = {}) => {
     data.yCell = yCell;
   }
 
+  if (payload.version !== undefined) {
+    const version = Number(payload.version);
+    if (!Number.isFinite(version) || !Number.isInteger(version)) {
+      errors.version = "version must be an integer when provided";
+    } else {
+      data.expectedVersion = version;
+    }
+  }
+
+  if (payload.updatedAt !== undefined) {
+    if (typeof payload.updatedAt !== "string") {
+      errors.updatedAt = "updatedAt must be an ISO timestamp string when provided";
+    } else {
+      const timestamp = payload.updatedAt.trim();
+      const parsed = new Date(timestamp);
+      if (!timestamp) {
+        errors.updatedAt = "updatedAt must be a non-empty ISO timestamp string";
+      } else if (Number.isNaN(parsed.getTime())) {
+        errors.updatedAt = "updatedAt must be a valid ISO timestamp";
+      } else {
+        data.expectedUpdatedAt = parsed.toISOString();
+      }
+    }
+  }
+
   return {
     valid: Object.keys(errors).length === 0,
     errors,
@@ -106,11 +134,34 @@ const parseTokenMovePayload = (payload = {}) => {
   };
 };
 
-const mapDomainError = (error) => ({
+const mapDomainError = (error) => {
+  const codeMap = {
+    [DomainError.codes.OUT_OF_BOUNDS]: "token.out_of_bounds",
+    [DomainError.codes.INVALID_GRID]: "scene.invalid_grid",
+    [DomainError.codes.NOT_OWNER]: "token.not_owner",
+    [DomainError.codes.NOT_FOUND]: "token.not_found",
+    [DomainError.codes.STALE_UPDATE]: "token.stale_update",
+    [DomainError.codes.INVALID_UPDATE]: "token.invalid_update",
+  };
+
+  const code = codeMap[error.code] ?? "domain.error";
+  return {
+    ok: false,
+    error: {
+      code,
+      message: error.message,
+      context: error.details ?? null,
+    },
+  };
+};
+
+const createWsError = (code, message, context = null) => ({
   ok: false,
-  error: error.message,
-  code: error.code,
-  details: error.details,
+  error: {
+    code,
+    message,
+    context,
+  },
 });
 
 export const initSocketServer = (httpServer) => {
@@ -167,6 +218,8 @@ export const initSocketServer = (httpServer) => {
     return next();
   });
 
+  const moveRateBuckets = new Map();
+
   gameNamespace.on("connection", (socket) => {
     const sessionId = socket.handshake.auth?.sessionId ?? "default";
     const logicalRoomId =
@@ -174,6 +227,13 @@ export const initSocketServer = (httpServer) => {
     const roomChannel = `room:${logicalRoomId}`;
 
     socket.join(roomChannel);
+
+    const socketId = socket.id;
+    moveRateBuckets.set(socketId, []);
+
+    socket.on("disconnect", () => {
+      moveRateBuckets.delete(socketId);
+    });
 
     socket.emit("connected", {
       message: "Connected to ShrineVTT",
@@ -208,7 +268,14 @@ export const initSocketServer = (httpServer) => {
 
     socket.on("gm:announcement", (payload) => {
       if (socket.data.user.role !== Roles.MASTER) {
-        socket.emit("error", { message: "Forbidden", code: "forbidden" });
+        socket.emit(
+          "error",
+          {
+            code: "forbidden",
+            message: "Forbidden",
+            context: null,
+          }
+        );
         return;
       }
 
@@ -224,28 +291,19 @@ export const initSocketServer = (httpServer) => {
         if (typeof callback === "function") {
           callback(response);
         } else if (!response?.ok) {
-          socket.emit("error", {
-            message: response?.error ?? "Unknown error",
-            code: response?.code ?? "error",
-            details: response?.details,
-          });
+          socket.emit("error", response.error);
         }
       };
 
       if (socket.data.user.role !== Roles.MASTER) {
-        reply({ ok: false, error: "Forbidden", code: "forbidden" });
+        reply(createWsError("forbidden", "Forbidden"));
         return;
       }
 
       const { valid, errors, data } = parseTokenCreatePayload(payload);
 
       if (!valid) {
-        reply({
-          ok: false,
-          error: "Invalid payload",
-          code: "invalid_payload",
-          details: errors,
-        });
+        reply(createWsError("invalid_payload", "Invalid payload", errors));
         return;
       }
 
@@ -272,7 +330,7 @@ export const initSocketServer = (httpServer) => {
         }
 
         console.error("Failed to create token", error);
-        reply({ ok: false, error: "Internal server error", code: "internal" });
+        reply(createWsError("internal_error", "Internal server error"));
       }
     });
 
@@ -281,23 +339,38 @@ export const initSocketServer = (httpServer) => {
         if (typeof callback === "function") {
           callback(response);
         } else if (!response?.ok) {
-          socket.emit("error", {
-            message: response?.error ?? "Unknown error",
-            code: response?.code ?? "error",
-            details: response?.details,
-          });
+          socket.emit("error", response.error);
         }
       };
+
+      if (![Roles.MASTER, Roles.PLAYER].includes(socket.data.user.role)) {
+        reply(createWsError("forbidden", "Forbidden"));
+        return;
+      }
+
+      const now = Date.now();
+      const bucket = moveRateBuckets.get(socketId);
+      if (bucket) {
+        const threshold = now - TOKEN_MOVE_RATE_LIMIT_WINDOW_MS;
+        while (bucket.length && bucket[0] <= threshold) {
+          bucket.shift();
+        }
+        if (bucket.length >= TOKEN_MOVE_RATE_LIMIT_MAX) {
+          reply(
+            createWsError("rate_limited", "Too many token.move requests", {
+              windowMs: TOKEN_MOVE_RATE_LIMIT_WINDOW_MS,
+              max: TOKEN_MOVE_RATE_LIMIT_MAX,
+            })
+          );
+          return;
+        }
+        bucket.push(now);
+      }
 
       const { valid, errors, data } = parseTokenMovePayload(payload);
 
       if (!valid) {
-        reply({
-          ok: false,
-          error: "Invalid payload",
-          code: "invalid_payload",
-          details: errors,
-        });
+        reply(createWsError("invalid_payload", "Invalid payload", errors));
         return;
       }
 
@@ -308,7 +381,11 @@ export const initSocketServer = (httpServer) => {
         const token = await tokenService.moveToken(
           data.tokenId,
           { xCell: data.xCell, yCell: data.yCell },
-          requesterId
+          requesterId,
+          {
+            expectedVersion: data.expectedVersion,
+            expectedUpdatedAt: data.expectedUpdatedAt,
+          }
         );
 
         const dto = tokenToDTO(token);
@@ -321,7 +398,7 @@ export const initSocketServer = (httpServer) => {
         }
 
         console.error("Failed to move token", error);
-        reply({ ok: false, error: "Internal server error", code: "internal" });
+        reply(createWsError("internal_error", "Internal server error"));
       }
     });
   });

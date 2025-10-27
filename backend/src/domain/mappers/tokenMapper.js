@@ -20,6 +20,8 @@ export const tokenFromRecord = (record) => {
   return new Token({
     ...record,
     meta: cloneMeta(record.meta),
+    version: Number(record.version ?? 1),
+    updatedAt: record.updatedAt ?? new Date().toISOString(),
   });
 };
 
@@ -33,6 +35,8 @@ export const tokenToRecord = (token) => ({
   sprite: token.sprite,
   visibility: token.visibility,
   meta: cloneMeta(token.meta),
+  version: token.version,
+  updatedAt: token.updatedAt,
 });
 
 export const tokenToDTO = tokenToRecord;
