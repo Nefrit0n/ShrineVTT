@@ -72,6 +72,39 @@ const parseTokenCreatePayload = (payload = {}) => {
   };
 };
 
+const parseTokenMovePayload = (payload = {}) => {
+  const errors = {};
+  const data = {};
+
+  const tokenId =
+    typeof payload.tokenId === "string" ? payload.tokenId.trim() : "";
+  if (!tokenId) {
+    errors.tokenId = "tokenId must be a non-empty string";
+  } else {
+    data.tokenId = tokenId;
+  }
+
+  const xCell = Number(payload.xCell);
+  if (!Number.isFinite(xCell)) {
+    errors.xCell = "xCell must be a finite number";
+  } else {
+    data.xCell = xCell;
+  }
+
+  const yCell = Number(payload.yCell);
+  if (!Number.isFinite(yCell)) {
+    errors.yCell = "yCell must be a finite number";
+  } else {
+    data.yCell = yCell;
+  }
+
+  return {
+    valid: Object.keys(errors).length === 0,
+    errors,
+    data,
+  };
+};
+
 const mapDomainError = (error) => ({
   ok: false,
   error: error.message,
@@ -128,6 +161,10 @@ export const initSocketServer = (httpServer) => {
       message: "Connected to ShrineVTT",
       role: socket.data.user.role,
       sessionId,
+      user: {
+        id: socket.data.user.id,
+        username: socket.data.user.username,
+      },
     });
 
     socket.on("ping", (payload) => {
@@ -203,6 +240,55 @@ export const initSocketServer = (httpServer) => {
         }
 
         console.error("Failed to create token", error);
+        reply({ ok: false, error: "Internal server error", code: "internal" });
+      }
+    });
+
+    socket.on("token.move:in", async (payload, callback) => {
+      const reply = (response) => {
+        if (typeof callback === "function") {
+          callback(response);
+        } else if (!response?.ok) {
+          socket.emit("error", {
+            message: response?.error ?? "Unknown error",
+            code: response?.code ?? "error",
+            details: response?.details,
+          });
+        }
+      };
+
+      const { valid, errors, data } = parseTokenMovePayload(payload);
+
+      if (!valid) {
+        reply({
+          ok: false,
+          error: "Invalid payload",
+          code: "invalid_payload",
+          details: errors,
+        });
+        return;
+      }
+
+      const requesterId =
+        socket.data.user.role === Roles.MASTER ? null : socket.data.user.id;
+
+      try {
+        const token = await tokenService.moveToken(
+          data.tokenId,
+          { xCell: data.xCell, yCell: data.yCell },
+          requesterId
+        );
+
+        const dto = tokenToDTO(token);
+        gameNamespace.to(roomId).emit("token.move:out", { token: dto });
+        reply({ ok: true, token: dto });
+      } catch (error) {
+        if (error instanceof DomainError) {
+          reply(mapDomainError(error));
+          return;
+        }
+
+        console.error("Failed to move token", error);
         reply({ ok: false, error: "Internal server error", code: "internal" });
       }
     });
