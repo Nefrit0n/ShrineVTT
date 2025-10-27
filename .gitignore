@@ -7,3 +7,4 @@ shared/node_modules/
 
 # Local data files
 /data/
+var/

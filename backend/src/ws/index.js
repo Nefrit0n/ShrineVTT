@@ -5,7 +5,7 @@ import registerCoreHandlers from './handlers/core.js';
 
 const WS_NAMESPACE = '/ws';
 
-export default function createWsServer(httpServer, { logger = log } = {}) {
+export default function createWsServer(httpServer, { logger = log, jwt } = {}) {
   const io = new Server(httpServer, {
     cors: {
       origin: '*',
@@ -15,7 +15,7 @@ export default function createWsServer(httpServer, { logger = log } = {}) {
 
   const namespace = io.of(WS_NAMESPACE);
 
-  registerWsMiddleware(namespace, { logger });
+  registerWsMiddleware(namespace, { logger, jwt });
   registerCoreHandlers(namespace, { logger });
 
   logger.info({ namespace: WS_NAMESPACE }, 'WS namespace initialized');
