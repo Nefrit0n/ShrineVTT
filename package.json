@@ -21,7 +21,8 @@
     "lint:fix": "eslint \"backend/src/**/*.js\" --fix",
     "format": "prettier --check \"**/*.{js,json,md,css,html}\"",
     "format:write": "prettier --write \"**/*.{js,json,md,css,html}\"",
-    "test": "node --test backend/tests"
+    "test": "node --test backend/tests",
+    "test:smoke": "node --test backend/tests/bootstrap.test.js"
   },
   "engines": {
     "node": ">=18"

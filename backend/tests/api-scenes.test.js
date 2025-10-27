@@ -14,7 +14,8 @@ await initDatabase();
 const { createApp } = await import("../src/app.js");
 const { createApplicationContainer } = await import("../src/application/container.js");
 
-const container = createApplicationContainer();
+const db = getDatabase();
+const container = createApplicationContainer({ db });
 const app = createApp(container);
 
 const server = createServer(app);
