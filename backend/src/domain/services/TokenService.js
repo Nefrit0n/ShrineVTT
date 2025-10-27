@@ -90,14 +90,14 @@ export class TokenService {
     if (
       typeof expectedVersion === "number" &&
       Number.isFinite(expectedVersion) &&
-      expectedVersion !== token.version
+      expectedVersion < token.version
     ) {
       throw new DomainError(
         DomainError.codes.STALE_UPDATE,
         "Token version mismatch",
         {
-          expectedVersion,
-          currentVersion: token.version,
+          expectedVersion: token.version,
+          receivedVersion: expectedVersion,
         }
       );
     }
@@ -129,6 +129,32 @@ export class TokenService {
       throw new DomainError(
         DomainError.codes.NOT_FOUND,
         `Scene with id ${token.sceneId} was not found`
+      );
+    }
+
+    const { columns: cols, rows } = scene.getCellDimensions();
+
+    if (!Number.isInteger(xCell) || !Number.isInteger(yCell)) {
+      throw new DomainError(
+        DomainError.codes.INVALID_GRID,
+        "xCell and yCell must be integers",
+        { xCell, yCell }
+      );
+    }
+
+    if (xCell < 0 || xCell >= cols) {
+      throw new DomainError(
+        DomainError.codes.OUT_OF_BOUNDS,
+        `xCell must be between 0 and ${cols - 1}`,
+        { xCell, cols }
+      );
+    }
+
+    if (yCell < 0 || yCell >= rows) {
+      throw new DomainError(
+        DomainError.codes.OUT_OF_BOUNDS,
+        `yCell must be between 0 and ${rows - 1}`,
+        { yCell, rows }
       );
     }
 

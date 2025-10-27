@@ -9,10 +9,13 @@ import {
 } from "pixi.js";
 
 import { BaseCanvasLayer } from "./CanvasLayer";
+import { cellCenterToPixel } from "../utils/gridMath";
 import {
-  cellCenterToPixel,
-  pixelToCellFromCenter,
-} from "../utils/gridMath";
+  cellFromWorld,
+  clampCell,
+  gridColsRows,
+  worldFromPointer,
+} from "../coords";
 
 export type TokenRenderData = {
   id: string;
@@ -25,6 +28,15 @@ export type TokenRenderData = {
 
 export type TokenMoveTarget = { xCell: number; yCell: number };
 
+export type TokenMoveDebugInfo = {
+  worldX: number;
+  worldY: number;
+  nx: number;
+  ny: number;
+  cols: number;
+  rows: number;
+};
+
 type TokenDisplay = {
   container: Container;
   placeholder: Graphics;
@@ -36,7 +48,8 @@ type TokenDisplay = {
 type TokenMoveHandler = (
   tokenId: string,
   target: TokenMoveTarget,
-  revert: () => void
+  revert: () => void,
+  debug?: TokenMoveDebugInfo
 ) => void;
 
 type DragState = {
@@ -49,6 +62,7 @@ type DragState = {
   targetCell: TokenMoveTarget;
   moveListener: (event: FederatedPointerEvent) => void;
   endListener: (event: FederatedPointerEvent) => void;
+  debugInfo: TokenMoveDebugInfo;
 };
 
 export class TokensLayer extends BaseCanvasLayer {
@@ -59,6 +73,10 @@ export class TokensLayer extends BaseCanvasLayer {
   private canMoveToken: (token: TokenRenderData) => boolean = () => false;
   private onMoveRequest: TokenMoveHandler | null = null;
   private dragState: DragState | null = null;
+  private sceneWidth = 2048;
+  private sceneHeight = 2048;
+  private originX = 0;
+  private originY = 0;
 
   constructor(gridSize: number) {
     super({ sortableChildren: true, eventMode: "static" });
@@ -130,6 +148,31 @@ export class TokensLayer extends BaseCanvasLayer {
 
   public setMoveHandler(handler: TokenMoveHandler | null): void {
     this.onMoveRequest = handler;
+  }
+
+  public setSceneBounds({
+    widthPx,
+    heightPx,
+    originX = 0,
+    originY = 0,
+  }: {
+    widthPx: number;
+    heightPx: number;
+    originX?: number;
+    originY?: number;
+  }): void {
+    if (Number.isFinite(widthPx) && widthPx > 0) {
+      this.sceneWidth = widthPx;
+    }
+    if (Number.isFinite(heightPx) && heightPx > 0) {
+      this.sceneHeight = heightPx;
+    }
+    if (Number.isFinite(originX)) {
+      this.originX = originX;
+    }
+    if (Number.isFinite(originY)) {
+      this.originY = originY;
+    }
   }
 
   private createDisplay(initialName: string): TokenDisplay {
@@ -299,6 +342,15 @@ export class TokensLayer extends BaseCanvasLayer {
     display.container.alpha = 0.9;
 
     const targetCell = { ...startCell };
+    const { cols, rows } = gridColsRows(this.sceneWidth, this.sceneHeight, this.gridSize);
+    const debugInfo: TokenMoveDebugInfo = {
+      worldX: display.container.position.x,
+      worldY: display.container.position.y,
+      nx: startCell.xCell,
+      ny: startCell.yCell,
+      cols,
+      rows,
+    };
 
     this.dragState = {
       tokenId,
@@ -310,6 +362,7 @@ export class TokensLayer extends BaseCanvasLayer {
       targetCell,
       moveListener,
       endListener,
+      debugInfo,
     };
 
     this.updatePreview(targetCell);
@@ -322,14 +375,30 @@ export class TokensLayer extends BaseCanvasLayer {
 
     event.preventDefault();
 
-    const local = event.getLocalPosition(this.container);
-    const centerX = local.x - this.dragState.offset.x;
-    const centerY = local.y - this.dragState.offset.y;
+    const world = worldFromPointer(this.container, event.global);
+    const centerX = world.x - this.dragState.offset.x;
+    const centerY = world.y - this.dragState.offset.y;
 
     this.dragState.display.container.position.set(centerX, centerY);
 
-    const xCell = pixelToCellFromCenter(centerX, this.gridSize);
-    const yCell = pixelToCellFromCenter(centerY, this.gridSize);
+    const { nx, ny } = cellFromWorld(
+      centerX,
+      centerY,
+      this.gridSize,
+      this.originX,
+      this.originY
+    );
+    const { cols, rows } = gridColsRows(this.sceneWidth, this.sceneHeight, this.gridSize);
+    const { xCell, yCell } = clampCell(nx, ny, cols, rows);
+
+    this.dragState.debugInfo = {
+      worldX: centerX,
+      worldY: centerY,
+      nx,
+      ny,
+      cols,
+      rows,
+    };
 
     if (
       xCell !== this.dragState.targetCell.xCell ||
@@ -355,6 +424,7 @@ export class TokensLayer extends BaseCanvasLayer {
       moveListener,
       endListener,
       targetCell,
+      debugInfo,
     } = this.dragState;
 
     display.container.off("globalpointermove", moveListener);
@@ -372,19 +442,6 @@ export class TokensLayer extends BaseCanvasLayer {
     const canMove = token ? this.canMoveToken(token) : false;
     display.container.cursor = canMove ? "grab" : "default";
 
-    const snapCenterX = cellCenterToPixel(targetCell.xCell, this.gridSize);
-    const snapCenterY = cellCenterToPixel(targetCell.yCell, this.gridSize);
-    display.container.position.set(snapCenterX, snapCenterY);
-    display.container.zIndex = targetCell.yCell;
-
-    if (
-      targetCell.xCell === startCell.xCell &&
-      targetCell.yCell === startCell.yCell
-    ) {
-      display.container.zIndex = startZIndex;
-      return;
-    }
-
     const revert = () => {
       const revertCenterX = cellCenterToPixel(startCell.xCell, this.gridSize);
       const revertCenterY = cellCenterToPixel(startCell.yCell, this.gridSize);
@@ -392,8 +449,18 @@ export class TokensLayer extends BaseCanvasLayer {
       display.container.zIndex = startCell.yCell;
     };
 
+    revert();
+    display.container.zIndex = startZIndex;
+
+    if (
+      targetCell.xCell === startCell.xCell &&
+      targetCell.yCell === startCell.yCell
+    ) {
+      return;
+    }
+
     if (this.onMoveRequest) {
-      this.onMoveRequest(tokenId, targetCell, revert);
+      this.onMoveRequest(tokenId, targetCell, revert, debugInfo);
     } else {
       revert();
     }

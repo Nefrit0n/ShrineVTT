@@ -3,7 +3,7 @@ import { DomainError } from "../errors/DomainError.js";
 const ensureInteger = (value, field) => {
   if (!Number.isInteger(value)) {
     throw new DomainError(
-      DomainError.codes.OUT_OF_BOUNDS,
+      DomainError.codes.INVALID_GRID,
       `${field} must be an integer`
     );
   }
@@ -21,11 +21,17 @@ const ensureBounds = (value, max, field) => {
 const normalizeCoordinate = (value) => {
   if (!Number.isFinite(value)) {
     throw new DomainError(
-      DomainError.codes.OUT_OF_BOUNDS,
+      DomainError.codes.INVALID_GRID,
       "Coordinate must be a finite number"
     );
   }
-  return Math.round(value);
+  if (!Number.isInteger(value)) {
+    throw new DomainError(
+      DomainError.codes.INVALID_GRID,
+      "Coordinate must be an integer"
+    );
+  }
+  return value;
 };
 
 export class Token {

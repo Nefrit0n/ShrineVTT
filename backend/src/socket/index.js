@@ -133,7 +133,7 @@ const parseTokenMovePayload = (payload = {}) => {
 const mapDomainError = (error) => {
   const codeMap = {
     [DomainError.codes.OUT_OF_BOUNDS]: "token.out_of_bounds",
-    [DomainError.codes.INVALID_GRID]: "scene.invalid_grid",
+    [DomainError.codes.INVALID_GRID]: "token.invalid_grid",
     [DomainError.codes.NOT_OWNER]: "token.not_owner",
     [DomainError.codes.NOT_FOUND]: "token.not_found",
     [DomainError.codes.STALE_UPDATE]: "token.stale_update",

@@ -21,7 +21,7 @@ test("Scene enforces positive grid size", () => {
   );
 });
 
-test("Token creation normalises coordinates to integers", () => {
+test("Token creation rejects non-integer coordinates", () => {
   const scene = new Scene({
     id: "scene-1",
     roomId: "room-1",
@@ -32,20 +32,22 @@ test("Token creation normalises coordinates to integers", () => {
     heightPx: 500,
   });
 
-  const token = Token.create(
-    {
-      id: "token-1",
-      sceneId: scene.id,
-      ownerUserId: "user-1",
-      name: "Hero",
-      xCell: 2.6,
-      yCell: 3.2,
-    },
-    scene
+  assert.throws(
+    () =>
+      Token.create(
+        {
+          id: "token-1",
+          sceneId: scene.id,
+          ownerUserId: "user-1",
+          name: "Hero",
+          xCell: 2.6,
+          yCell: 3.2,
+        },
+        scene
+      ),
+    (error) =>
+      error instanceof DomainError && error.code === DomainError.codes.INVALID_GRID
   );
-
-  assert.equal(token.xCell, 3);
-  assert.equal(token.yCell, 3);
 });
 
 test("Token creation rejects out-of-bounds coordinates", () => {
