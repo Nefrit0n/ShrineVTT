@@ -1,0 +1,67 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", "Inter", "Roboto", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.5;
+  background-color: var(--bg);
+  color: var(--text);
+
+  --bg: #0f1115;
+  --panel: #151922;
+  --panel-2: #1c2230;
+  --text: #e6e6e6;
+  --muted: #9aa3b2;
+  --primary: #5b8cff;
+  --accent: #a0b3ff;
+  --success: #27c281;
+  --warn: #f5a524;
+  --error: #ef5b5b;
+  --radius: 12px;
+  --shadow: 0 0 0 1px #242b3a inset, 0 8px 24px rgba(0, 0, 0, 0.35);
+  --gap: 8px;
+
+  --font-xs: 12px;
+  --font-sm: 14px;
+  --font-md: 16px;
+  --font-lg: 20px;
+  --font-xl: 24px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background-color: var(--bg);
+}
+
+body {
+  color: var(--text);
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}

@@ -1,12 +1,4 @@
-import {
-  Container,
-  FederatedPointerEvent,
-  Graphics,
-  Point,
-  Sprite,
-  Text,
-  Texture,
-} from "pixi.js";
+import { Container, FederatedPointerEvent, Graphics, Point, Sprite, Text, Texture } from "pixi.js";
 
 import { BaseCanvasLayer } from "./CanvasLayer";
 import { cellCenterToPixel } from "../utils/gridMath";
@@ -16,6 +8,47 @@ import {
   gridColsRows,
   worldFromPointer,
 } from "../coords";
+import { HoverCellLayer } from "../HoverCellLayer";
+
+const colorCache = new Map<string, number>();
+
+const parseCssColor = (value: string): number | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.startsWith("#")) {
+    const hex = trimmed.slice(1);
+    if (hex.length === 3) {
+      const expanded = hex
+        .split("")
+        .map((char) => char + char)
+        .join("");
+      return Number.parseInt(expanded, 16);
+    }
+    if (hex.length === 6) {
+      return Number.parseInt(hex, 16);
+    }
+    return null;
+  }
+
+  const rgbMatch = trimmed.match(/rgba?\(([^)]+)\)/i);
+  if (rgbMatch) {
+    const parts = rgbMatch[1]
+      .split(",")
+      .map((segment) => Number.parseFloat(segment.trim()))
+      .slice(0, 3);
+    if (parts.length === 3 && parts.every((value) => Number.isFinite(value))) {
+      const [r, g, b] = parts.map((component) =>
+        Math.max(0, Math.min(255, Math.round(component)))
+      );
+      return (r << 16) | (g << 8) | b;
+    }
+  }
+
+  return null;
+};
 
 export type TokenRenderData = {
   id: string;
@@ -38,11 +71,16 @@ export type TokenMoveDebugInfo = {
 };
 
 type TokenDisplay = {
+  id: string;
   container: Container;
+  halo: Graphics;
   placeholder: Graphics;
+  labelContainer: Container;
+  labelBackground: Graphics;
   label: Text;
   sprite: Sprite | null;
   handlersAttached: boolean;
+  fullName: string;
 };
 
 type TokenMoveHandler = (
@@ -69,7 +107,6 @@ export class TokensLayer extends BaseCanvasLayer {
   private gridSize: number;
   private readonly tokens = new Map<string, TokenDisplay>();
   private readonly tokenData = new Map<string, TokenRenderData>();
-  private readonly dragPreview: Graphics;
   private canMoveToken: (token: TokenRenderData) => boolean = () => false;
   private onMoveRequest: TokenMoveHandler | null = null;
   private dragState: DragState | null = null;
@@ -77,23 +114,21 @@ export class TokensLayer extends BaseCanvasLayer {
   private sceneHeight = 2048;
   private originX = 0;
   private originY = 0;
+  private hoverLayer: HoverCellLayer | null = null;
+  private snapToGrid = true;
+  private selectedTokenId: string | null = null;
+  private canvasElement: HTMLCanvasElement | null = null;
 
   constructor(gridSize: number) {
     super({ sortableChildren: true, eventMode: "static" });
     this.gridSize = gridSize;
-
-    this.dragPreview = new Graphics();
-    this.dragPreview.eventMode = "none";
-    this.dragPreview.visible = false;
-    this.dragPreview.zIndex = Number.MAX_SAFE_INTEGER;
-    this.container.addChild(this.dragPreview);
   }
 
   public upsert(token: TokenRenderData): void {
     let display = this.tokens.get(token.id);
 
     if (!display) {
-      display = this.createDisplay(token.name);
+      display = this.createDisplay(token.id, token.name);
       this.tokens.set(token.id, display);
       this.container.addChild(display.container);
       this.attachDragHandlers(token.id, display);
@@ -119,7 +154,8 @@ export class TokensLayer extends BaseCanvasLayer {
       }
     }
 
-    this.hidePreview();
+    this.hoverLayer?.setGridSize(this.gridSize);
+    this.hideHover();
   }
 
   public replaceAll(nextTokens: TokenRenderData[]): void {
@@ -173,36 +209,99 @@ export class TokensLayer extends BaseCanvasLayer {
     if (Number.isFinite(originY)) {
       this.originY = originY;
     }
+
+    if (this.hoverLayer) {
+      this.hoverLayer.setSceneBounds({
+        widthPx: this.sceneWidth,
+        heightPx: this.sceneHeight,
+        originX: this.originX,
+        originY: this.originY,
+      });
+    }
   }
 
-  private createDisplay(initialName: string): TokenDisplay {
+  public setHoverLayer(layer: HoverCellLayer | null): void {
+    this.hoverLayer = layer;
+    if (layer) {
+      layer.setGridSize(this.gridSize);
+      layer.setSceneBounds({
+        widthPx: this.sceneWidth,
+        heightPx: this.sceneHeight,
+        originX: this.originX,
+        originY: this.originY,
+      });
+    }
+  }
+
+  public setSnapToGrid(enabled: boolean): void {
+    this.snapToGrid = enabled;
+  }
+
+  public setCanvasElement(canvas: HTMLCanvasElement | null): void {
+    if (!canvas && this.canvasElement) {
+      this.canvasElement.removeAttribute("title");
+    }
+    this.canvasElement = canvas;
+  }
+
+  private createDisplay(id: string, initialName: string): TokenDisplay {
     const container = new Container();
     container.eventMode = "static";
     container.cursor = "pointer";
-    container.sortableChildren = false;
+    container.sortableChildren = true;
+
+    const halo = new Graphics();
+    halo.visible = false;
+    halo.zIndex = 0;
+    container.addChild(halo);
 
     const placeholder = new Graphics();
+    placeholder.zIndex = 1;
     container.addChild(placeholder);
+
+    const labelContainer = new Container();
+    labelContainer.eventMode = "static";
+    labelContainer.cursor = "help";
+    labelContainer.zIndex = 3;
+
+    const labelBackground = new Graphics();
+    labelContainer.addChild(labelBackground);
 
     const label = new Text({
       text: initialName,
       style: {
         fill: 0xffffff,
         fontSize: 16,
-        stroke: { color: 0x000000, width: 3, alpha: 0.6 },
+        fontWeight: "600",
+        wordWrap: true,
+        wordWrapWidth: 220,
+        align: "center",
       },
     });
-    label.anchor.set(0.5, 1);
-    label.position.set(0, 0);
-    container.addChild(label);
+    label.anchor.set(0.5);
+    labelContainer.addChild(label);
+
+    container.addChild(labelContainer);
 
     const display: TokenDisplay = {
+      id,
       container,
+      halo,
       placeholder,
+      labelContainer,
+      labelBackground,
       label,
       sprite: null,
       handlersAttached: false,
+      fullName: initialName,
     };
+
+    labelContainer.on("pointerover", () => {
+      this.setCanvasTooltip(display.fullName);
+    });
+    labelContainer.on("pointerout", () => {
+      this.setCanvasTooltip(null);
+    });
 
     this.configureTokenAppearance(display);
     return display;
@@ -216,8 +315,9 @@ export class TokensLayer extends BaseCanvasLayer {
     container.position.set(centerX, centerY);
     container.zIndex = token.yCell;
 
-    label.text = token.name;
-    this.configureTokenAppearance(display);
+    display.fullName = token.name;
+    label.text = this.truncateLabel(token.name);
+    this.configureTokenAppearance(display, token);
 
     const spriteUrl = typeof token.sprite === "string" ? token.sprite.trim() : "";
 
@@ -247,21 +347,50 @@ export class TokensLayer extends BaseCanvasLayer {
     }
   }
 
-  private configureTokenAppearance(display: TokenDisplay): void {
-    const { placeholder, label } = display;
-    const radius = Math.max(16, this.gridSize * 0.35);
+  private configureTokenAppearance(
+    display: TokenDisplay,
+    token?: TokenRenderData
+  ): void {
+    const { placeholder, label, labelBackground, labelContainer } = display;
+    const radius = Math.max(18, this.gridSize * 0.35);
+    const roleColor = this.resolveColor(
+      token?.ownerUserId ? "--success" : "--accent",
+      token?.ownerUserId ? 0x27c281 : 0xa0b3ff
+    );
 
     placeholder.clear();
     placeholder.circle(0, 0, radius);
-    placeholder.fill({ color: 0x4b5fff, alpha: 0.85 });
+    placeholder.fill({ color: roleColor, alpha: 0.82 });
     placeholder.stroke({
       color: 0xffffff,
-      alpha: 0.9,
-      width: Math.max(2, this.gridSize * 0.08),
+      alpha: 0.14,
+      width: Math.max(2, this.gridSize * 0.06),
     });
 
-    label.style.fontSize = Math.max(12, this.gridSize * 0.3);
-    label.position.set(0, -(radius + 6));
+    const fontSize = Math.max(12, this.gridSize * 0.28);
+    const maxWidth = Math.max(120, this.gridSize * 2.4);
+    label.style.fontSize = fontSize;
+    label.style.wordWrapWidth = maxWidth;
+
+    const paddingX = 12;
+    const paddingY = 6;
+    const chipWidth = Math.min(maxWidth, Math.max(label.width, fontSize)) + paddingX * 2;
+    const chipHeight = label.height + paddingY * 2;
+    const halfWidth = chipWidth / 2;
+    const halfHeight = chipHeight / 2;
+
+    labelBackground.clear();
+    labelBackground.roundRect(-halfWidth, -halfHeight, chipWidth, chipHeight, 12);
+    labelBackground.fill({
+      color: this.resolveColor("--panel-2", 0x1c2230),
+      alpha: 0.7,
+    });
+    labelBackground.stroke({ color: 0xffffff, width: 1, alpha: 0.08 });
+
+    label.position.set(0, 0);
+    labelContainer.position.set(0, -(radius + halfHeight + 8));
+
+    this.updateHalo(display);
   }
 
   private attachDragHandlers(tokenId: string, display: TokenDisplay): void {
@@ -289,13 +418,17 @@ export class TokensLayer extends BaseCanvasLayer {
       dragDisplay.container.off("pointerupoutside", endListener);
       dragDisplay.container.off("pointercancel", endListener);
       this.dragState = null;
-      this.hidePreview();
+      this.hideHover();
     }
 
     this.tokenData.delete(tokenId);
     this.tokens.delete(tokenId);
     this.container.removeChild(display.container);
     display.container.destroy({ children: true, texture: false, baseTexture: false });
+
+    if (this.selectedTokenId === tokenId) {
+      this.setSelectedToken(null);
+    }
   }
 
   private handleDragStart(
@@ -307,6 +440,8 @@ export class TokensLayer extends BaseCanvasLayer {
     if (!token) {
       return;
     }
+
+    this.setSelectedToken(tokenId);
 
     if (!this.canMoveToken(token) || this.dragState) {
       return;
@@ -365,7 +500,11 @@ export class TokensLayer extends BaseCanvasLayer {
       debugInfo,
     };
 
-    this.updatePreview(targetCell);
+    this.updateHover({
+      xCell: targetCell.xCell,
+      yCell: targetCell.yCell,
+      isInside: true,
+    });
   }
 
   private handleDragMove(event: FederatedPointerEvent): void {
@@ -389,7 +528,9 @@ export class TokensLayer extends BaseCanvasLayer {
       this.originY
     );
     const { cols, rows } = gridColsRows(this.sceneWidth, this.sceneHeight, this.gridSize);
-    const { xCell, yCell } = clampCell(nx, ny, cols, rows);
+    const clamped = clampCell(nx, ny, cols, rows);
+    const isInside = nx >= 0 && ny >= 0 && nx < cols && ny < rows;
+    const targetCell = this.snapToGrid ? clamped : { xCell: nx, yCell: ny };
 
     this.dragState.debugInfo = {
       worldX: centerX,
@@ -400,13 +541,22 @@ export class TokensLayer extends BaseCanvasLayer {
       rows,
     };
 
-    if (
-      xCell !== this.dragState.targetCell.xCell ||
-      yCell !== this.dragState.targetCell.yCell
-    ) {
-      this.dragState.targetCell = { xCell, yCell };
-      this.updatePreview(this.dragState.targetCell);
+    const current = this.dragState.targetCell;
+    if (current.xCell !== targetCell.xCell || current.yCell !== targetCell.yCell) {
+      this.dragState.targetCell = { ...targetCell };
     }
+
+    this.updateHover({
+      xCell: clamped.xCell,
+      yCell: clamped.yCell,
+      isInside,
+      outOfBounds: {
+        left: nx < 0,
+        right: nx >= cols,
+        top: ny < 0,
+        bottom: ny >= rows,
+      },
+    });
   }
 
   private handleDragEnd(event: FederatedPointerEvent): void {
@@ -434,13 +584,13 @@ export class TokensLayer extends BaseCanvasLayer {
 
     this.dragState = null;
 
-    this.hidePreview();
+    this.hideHover();
 
     display.container.alpha = 1;
 
     const token = this.tokenData.get(tokenId);
     const canMove = token ? this.canMoveToken(token) : false;
-    display.container.cursor = canMove ? "grab" : "default";
+    display.container.cursor = canMove ? "grab" : "pointer";
 
     const revert = () => {
       const revertCenterX = cellCenterToPixel(startCell.xCell, this.gridSize);
@@ -468,24 +618,93 @@ export class TokensLayer extends BaseCanvasLayer {
 
   private applyInteractivity(display: TokenDisplay, token: TokenRenderData): void {
     const canMove = this.canMoveToken(token);
-    display.container.eventMode = canMove ? "static" : "none";
-    display.container.cursor = canMove ? "grab" : "default";
+    display.container.eventMode = "static";
+    if (this.dragState?.tokenId === display.id) {
+      display.container.cursor = "grabbing";
+    } else {
+      display.container.cursor = canMove ? "grab" : "pointer";
+    }
   }
 
-  private updatePreview(target: TokenMoveTarget): void {
-    const half = this.gridSize / 2;
-    const startX = target.xCell * this.gridSize - half;
-    const startY = target.yCell * this.gridSize - half;
-
-    this.dragPreview.clear();
-    this.dragPreview.rect(startX, startY, this.gridSize, this.gridSize);
-    this.dragPreview.stroke({ color: 0xffffff, width: Math.max(2, this.gridSize * 0.05), alpha: 0.9 });
-    this.dragPreview.fill({ color: 0xffffff, alpha: 0.15 });
-    this.dragPreview.visible = true;
+  private updateHover(
+    target:
+      | (TokenMoveTarget & { isInside: true })
+      | (TokenMoveTarget & {
+          isInside: false;
+          outOfBounds: { left?: boolean; right?: boolean; top?: boolean; bottom?: boolean };
+        })
+  ): void {
+    this.hoverLayer?.show(target);
   }
 
-  private hidePreview(): void {
-    this.dragPreview.visible = false;
-    this.dragPreview.clear();
+  private hideHover(): void {
+    this.hoverLayer?.hide();
+  }
+
+  private setSelectedToken(tokenId: string | null): void {
+    if (this.selectedTokenId === tokenId) {
+      return;
+    }
+
+    this.selectedTokenId = tokenId;
+
+    for (const [id, display] of this.tokens.entries()) {
+      this.updateHalo(display);
+      const token = this.tokenData.get(id);
+      if (token) {
+        this.applyInteractivity(display, token);
+      }
+    }
+  }
+
+  private updateHalo(display: TokenDisplay): void {
+    const isSelected = this.selectedTokenId === display.id;
+    display.halo.clear();
+    display.halo.visible = isSelected;
+
+    if (!isSelected) {
+      return;
+    }
+
+    const radius = Math.max(22, this.gridSize * 0.45);
+    const accent = this.resolveColor("--accent", 0xa0b3ff);
+    display.halo.circle(0, 0, radius);
+    display.halo.stroke({ color: accent, width: Math.max(2.5, this.gridSize * 0.05), alpha: 0.9 });
+    display.halo.fill({ color: accent, alpha: 0.08 });
+  }
+
+  private truncateLabel(name: string): string {
+    const trimmed = name.trim();
+    if (trimmed.length <= 24) {
+      return trimmed;
+    }
+    return `${trimmed.slice(0, 23)}…`;
+  }
+
+  private setCanvasTooltip(text: string | null): void {
+    if (!this.canvasElement) {
+      return;
+    }
+    if (text && text.trim()) {
+      this.canvasElement.title = text;
+    } else {
+      this.canvasElement.removeAttribute("title");
+    }
+  }
+
+  private resolveColor(variable: string, fallback: number): number {
+    if (colorCache.has(variable)) {
+      return colorCache.get(variable)!;
+    }
+
+    if (typeof window === "undefined") {
+      return fallback;
+    }
+
+    const computed = getComputedStyle(document.documentElement).getPropertyValue(variable);
+    const parsed = computed ? parseCssColor(computed) : null;
+    const value = parsed ?? fallback;
+    colorCache.set(variable, value);
+    return value;
   }
 }

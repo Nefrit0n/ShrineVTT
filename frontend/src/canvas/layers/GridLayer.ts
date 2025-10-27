@@ -21,6 +21,7 @@ export class GridLayer extends BaseCanvasLayer {
         scale: number;
       }
     | null = null;
+  private highContrast = false;
 
   constructor(gridSize: number) {
     super({ eventMode: "none" });
@@ -40,6 +41,14 @@ export class GridLayer extends BaseCanvasLayer {
 
   public setVisible(visible: boolean): void {
     this.container.visible = visible;
+  }
+
+  public setHighContrast(enabled: boolean): void {
+    if (this.highContrast === enabled) {
+      return;
+    }
+    this.highContrast = enabled;
+    this.lastState = null;
   }
 
   public update(state: GridState): void {
@@ -78,24 +87,38 @@ export class GridLayer extends BaseCanvasLayer {
     };
 
     this.graphics.clear();
+
+    const cellSize = this.gridSize;
+    const verticalStart = startXIndex * cellSize;
+    const verticalEnd = endXIndex * cellSize;
+    const horizontalStart = startYIndex * cellSize;
+    const horizontalEnd = endYIndex * cellSize;
+
+    if (this.highContrast) {
+      for (let xIndex = startXIndex; xIndex < endXIndex; xIndex += 1) {
+        for (let yIndex = startYIndex; yIndex < endYIndex; yIndex += 1) {
+          const x = xIndex * cellSize;
+          const y = yIndex * cellSize;
+          const alpha = (xIndex + yIndex) % 2 === 0 ? 0.16 : 0.07;
+          this.graphics.rect(x, y, cellSize, cellSize);
+          this.graphics.fill({ color: 0xffffff, alpha });
+        }
+      }
+    }
+
     this.graphics.lineStyle({
-      width: 1 / scale,
-      color: 0xffffff,
-      alpha: 0.2,
+      width: this.highContrast ? Math.max(1.5 / scale, 1.2) : 1 / scale,
+      color: this.highContrast ? 0xa0b3ff : 0xffffff,
+      alpha: this.highContrast ? 0.4 : 0.2,
       alignment: 0,
     });
 
-    const verticalStart = startXIndex * this.gridSize;
-    const verticalEnd = endXIndex * this.gridSize;
-    const horizontalStart = startYIndex * this.gridSize;
-    const horizontalEnd = endYIndex * this.gridSize;
-
-    for (let x = verticalStart; x <= verticalEnd; x += this.gridSize) {
+    for (let x = verticalStart; x <= verticalEnd; x += cellSize) {
       this.graphics.moveTo(x, horizontalStart);
       this.graphics.lineTo(x, horizontalEnd);
     }
 
-    for (let y = horizontalStart; y <= horizontalEnd; y += this.gridSize) {
+    for (let y = horizontalStart; y <= horizontalEnd; y += cellSize) {
       this.graphics.moveTo(verticalStart, y);
       this.graphics.lineTo(verticalEnd, y);
     }
