@@ -24,6 +24,10 @@ type TokenCreateAck =
   | { ok: true; token: TokenDTO }
   | { ok: false; error: string; code?: string; details?: unknown };
 
+type TokenMoveAck =
+  | { ok: true; token: TokenDTO }
+  | { ok: false; error: string; code?: string; details?: unknown };
+
 const httpStatusEl = document.querySelector<HTMLSpanElement>("#http-status");
 const wsStatusEl = document.querySelector<HTMLSpanElement>("#ws-status");
 const roleStatusEl = document.querySelector<HTMLSpanElement>("#role-status");
@@ -49,6 +53,9 @@ let authToken: string | null = window.sessionStorage.getItem("shrinevtt:token");
 const storedRole = window.sessionStorage.getItem("shrinevtt:role");
 let currentRole: ServerRole = storedRole === "MASTER" || storedRole === "PLAYER" ? storedRole : null;
 let stage: PixiStage | null = null;
+const storedUserId = window.sessionStorage.getItem("shrinevtt:userId");
+let currentUserId: string | null = storedUserId && storedUserId.trim() ? storedUserId : null;
+const tokens = new Map<string, TokenDTO>();
 
 const formatTime = () => new Date().toLocaleTimeString();
 
@@ -63,6 +70,40 @@ const appendLog = (message: string, payload?: unknown) => {
   logContainer.prepend(entry);
 };
 
+const refreshTokenPermissions = () => {
+  if (!stage) {
+    return;
+  }
+
+  stage.setTokenMovePermission((token) => {
+    if (!token) {
+      return false;
+    }
+
+    if (currentRole === "MASTER") {
+      return true;
+    }
+
+    if (currentRole === "PLAYER") {
+      return token.ownerUserId !== null && token.ownerUserId === currentUserId;
+    }
+
+    return false;
+  });
+};
+
+const updateUserId = (userId: string | null) => {
+  currentUserId = userId;
+
+  if (userId) {
+    window.sessionStorage.setItem("shrinevtt:userId", userId);
+  } else {
+    window.sessionStorage.removeItem("shrinevtt:userId");
+  }
+
+  refreshTokenPermissions();
+};
+
 const updateRole = (role: ServerRole) => {
   currentRole = role;
   if (roleStatusEl) {
@@ -74,6 +115,8 @@ const updateRole = (role: ServerRole) => {
   if (tokenControls) {
     tokenControls.disabled = role !== "MASTER";
   }
+
+  refreshTokenPermissions();
 };
 
 const updateHttpStatus = (status: HttpStatus) => {
@@ -122,10 +165,14 @@ const connectSocket = () => {
     appendLog("WS error", { message: err.message });
   });
 
-  socket.on("connected", (payload: { role?: ServerRole }) => {
-    updateRole(payload?.role ?? null);
-    appendLog("Handshake", payload);
-  });
+  socket.on(
+    "connected",
+    (payload: { role?: ServerRole; user?: { id?: string; username?: string } }) => {
+      updateUserId(payload.user?.id ?? currentUserId);
+      updateRole(payload?.role ?? null);
+      appendLog("Handshake", payload);
+    }
+  );
 
   socket.on("pong", (payload) => {
     appendLog("PONG", payload);
@@ -141,6 +188,17 @@ const connectSocket = () => {
       sceneId: payload.token.sceneId,
       name: payload.token.name,
     });
+    tokens.set(payload.token.id, payload.token);
+    stage?.upsertToken(payload.token);
+  });
+
+  socket.on("token.move:out", (payload: { token: TokenDTO }) => {
+    appendLog("TOKEN move", {
+      id: payload.token.id,
+      xCell: payload.token.xCell,
+      yCell: payload.token.yCell,
+    });
+    tokens.set(payload.token.id, payload.token);
     stage?.upsertToken(payload.token);
   });
 };
@@ -162,6 +220,7 @@ const authenticate = async (username: string, password: string) => {
 
     const result = await response.json();
     authToken = result.token;
+    updateUserId(result.user?.id ?? null);
     updateRole(result.user?.role ?? null);
     window.sessionStorage.setItem("shrinevtt:token", authToken);
     window.sessionStorage.setItem("shrinevtt:role", result.user?.role ?? "");
@@ -311,13 +370,16 @@ const bootstrap = async () => {
       if (response.ok) {
         const data = await response.json();
         updateHttpStatus("online");
+        updateUserId(data.user?.id ?? null);
         updateRole(data.user?.role ?? null);
         connectSocket();
         return;
       }
       window.sessionStorage.removeItem("shrinevtt:token");
       window.sessionStorage.removeItem("shrinevtt:role");
+      window.sessionStorage.removeItem("shrinevtt:userId");
       authToken = null;
+      updateUserId(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       appendLog("Session check failed", { message });
@@ -356,6 +418,32 @@ const setupStage = async () => {
       stage?.setGridVisible(gridToggle.checked);
     });
   }
+
+  stage.setTokenMoveHandler((tokenId, target, revert) => {
+    const token = tokens.get(tokenId);
+    if (!socket || !token) {
+      appendLog("TOKEN move denied", { message: "Нет соединения с сервером" });
+      revert();
+      return;
+    }
+
+    socket.emit(
+      "token.move:in",
+      { tokenId, xCell: target.xCell, yCell: target.yCell },
+      (response: TokenMoveAck) => {
+        if (!response?.ok) {
+          appendLog("TOKEN move error", {
+            id: tokenId,
+            message: response?.error ?? "Не удалось переместить токен",
+            code: response?.code,
+          });
+          revert();
+        }
+      }
+    );
+  });
+
+  refreshTokenPermissions();
 
   if (scaleIndicator) {
     scaleIndicator.textContent = `${Math.round(stage.getScale() * 100)}%`;

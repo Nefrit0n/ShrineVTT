@@ -100,6 +100,22 @@ export class PixiStage {
     this.tokensLayer.upsert(token);
   }
 
+  public setTokenMovePermission(
+    checker: (token: TokenRenderData) => boolean
+  ): void {
+    this.tokensLayer.setMovePermission(checker);
+  }
+
+  public setTokenMoveHandler(
+    handler: (
+      tokenId: string,
+      target: { xCell: number; yCell: number },
+      revert: () => void
+    ) => void
+  ): void {
+    this.tokensLayer.setMoveHandler(handler);
+  }
+
   private attachInteractionHandlers(canvas: HTMLCanvasElement): void {
     canvas.addEventListener(
       "wheel",
