@@ -150,7 +150,7 @@ test("Player can move owned token via websocket", async () => {
           tokenId,
           xCell: 4,
           yCell: 5,
-          version: createAck.token.version,
+          version: createAck.token.version + 1,
           updatedAt: createAck.token.updatedAt,
         },
         (response) => resolve(response)
@@ -160,6 +160,8 @@ test("Player can move owned token via websocket", async () => {
     assert.ok(moveAck?.ok, `Token move failed: ${moveAck?.error?.message ?? "unknown"}`);
     assert.equal(moveAck.token.xCell, 4);
     assert.equal(moveAck.token.yCell, 5);
+    assert.equal(moveAck.token.version, createAck.token.version + 1);
+    assert.notEqual(moveAck.token.updatedAt, createAck.token.updatedAt);
 
     const [moveOut] = await moveBroadcastPromise;
     assert.equal(moveOut.token.id, tokenId);

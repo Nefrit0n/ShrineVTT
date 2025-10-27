@@ -2,7 +2,11 @@ import { Application, Container, FederatedPointerEvent, Point } from "pixi.js";
 
 import { GridLayer } from "./layers/GridLayer";
 import { MapLayer, type MapDescriptor } from "./layers/MapLayer";
-import { TokensLayer, type TokenRenderData } from "./layers/TokensLayer";
+import {
+  TokensLayer,
+  type TokenMoveDebugInfo,
+  type TokenRenderData,
+} from "./layers/TokensLayer";
 
 type PixiStageOptions = {
   canvas: HTMLCanvasElement;
@@ -76,6 +80,8 @@ export class PixiStage {
     await stage.mapLayer.setBackground(
       options.map ?? { fallbackColor: 0x1b1b1b, fallbackSize: { width: 2048, height: 2048 } }
     );
+    const bounds = stage.mapLayer.getContentBounds();
+    stage.tokensLayer.setSceneBounds({ widthPx: bounds.width, heightPx: bounds.height });
     stage.centerOnMap();
     stage.requestGridUpdate();
     stage.notifyScaleChange();
@@ -104,6 +110,8 @@ export class PixiStage {
 
   public async setMap(descriptor: MapDescriptor): Promise<void> {
     await this.mapLayer.setBackground(descriptor);
+    const bounds = this.mapLayer.getContentBounds();
+    this.tokensLayer.setSceneBounds({ widthPx: bounds.width, heightPx: bounds.height });
     this.centerOnMap();
     this.requestGridUpdate();
   }
@@ -128,6 +136,10 @@ export class PixiStage {
       fallbackColor: 0x1b1b1b,
       fallbackSize: { width: scene.widthPx, height: scene.heightPx },
     });
+    this.tokensLayer.setSceneBounds({
+      widthPx: scene.widthPx,
+      heightPx: scene.heightPx,
+    });
     this.centerOnMap();
     this.requestGridUpdate();
   }
@@ -142,7 +154,8 @@ export class PixiStage {
     handler: (
       tokenId: string,
       target: { xCell: number; yCell: number },
-      revert: () => void
+      revert: () => void,
+      debug?: TokenMoveDebugInfo
     ) => void
   ): void {
     this.tokensLayer.setMoveHandler(handler);

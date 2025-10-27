@@ -42,8 +42,8 @@ export class Scene {
   }
 
   getCellDimensions() {
-    const columns = Math.max(1, Math.ceil(this.widthPx / this.gridSize));
-    const rows = Math.max(1, Math.ceil(this.heightPx / this.gridSize));
+    const columns = Math.max(1, Math.floor(this.widthPx / this.gridSize));
+    const rows = Math.max(1, Math.floor(this.heightPx / this.gridSize));
     return { columns, rows };
   }
 

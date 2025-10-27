@@ -1,7 +1,7 @@
 import { io, type Socket } from "socket.io-client";
 import { PixiStage } from "./canvas/PixiStage";
 import type { MapDescriptor } from "./canvas/layers/MapLayer";
-import type { TokenRenderData } from "./canvas/layers/TokensLayer";
+import type { TokenMoveDebugInfo, TokenRenderData } from "./canvas/layers/TokensLayer";
 import type {
   ConnectedMessage,
   SceneDTO,
@@ -53,8 +53,37 @@ let stage: PixiStage | null = null;
 const storedUserId = window.sessionStorage.getItem("shrinevtt:userId");
 let currentUserId: string | null = storedUserId && storedUserId.trim() ? storedUserId : null;
 const tokens = new Map<string, TokenDTO>();
+const localMoveVersions = new Map<string, number>();
 let currentSceneId: string | null = null;
 let pendingSnapshot: { scene: SceneDTO | null; tokens: TokenRenderData[] } | null = null;
+
+const DEBUG_MOVES = (() => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const globalFlag = (window as unknown as { DEBUG_MOVES?: unknown }).DEBUG_MOVES;
+  if (typeof globalFlag === "boolean") {
+    return globalFlag;
+  }
+  if (typeof globalFlag === "string") {
+    return globalFlag.toLowerCase() === "true";
+  }
+  const envFlag = (import.meta.env?.VITE_DEBUG_MOVES as string | undefined) ?? undefined;
+  if (typeof envFlag === "string") {
+    return envFlag.toLowerCase() === "true";
+  }
+  return false;
+})();
+
+type PendingMoveRequest = {
+  target: { xCell: number; yCell: number };
+  revert: () => void;
+  debug?: TokenMoveDebugInfo;
+};
+
+const pendingMoves = new Map<string, PendingMoveRequest>();
+let moveDispatchTimer: number | null = null;
+let lastMoveDispatch = 0;
 
 const formatTime = () => new Date().toLocaleTimeString();
 
@@ -117,6 +146,102 @@ const handleWsError = (error: WsError | undefined | null, scope: string) => {
   });
 };
 
+const dispatchMoveRequest = (tokenId: string, request: PendingMoveRequest) => {
+  const token = tokens.get(tokenId);
+
+  if (!socket || !token) {
+    appendLog("TOKEN move denied", { message: "Нет соединения с сервером" });
+    request.revert();
+    if (token) {
+      localMoveVersions.set(tokenId, token.version);
+    } else {
+      localMoveVersions.delete(tokenId);
+    }
+    return;
+  }
+
+  const confirmedVersion = localMoveVersions.get(tokenId) ?? token.version ?? 0;
+  const nextVersion = confirmedVersion + 1;
+  localMoveVersions.set(tokenId, nextVersion);
+
+  const payload: TokenMoveIn = {
+    tokenId,
+    xCell: request.target.xCell,
+    yCell: request.target.yCell,
+    version: nextVersion,
+    updatedAt: token.updatedAt,
+  };
+
+  if (DEBUG_MOVES && request.debug) {
+    console.debug("TOKEN move debug", {
+      tokenId,
+      worldX: request.debug.worldX,
+      worldY: request.debug.worldY,
+      nx: request.debug.nx,
+      ny: request.debug.ny,
+      xCell: request.target.xCell,
+      yCell: request.target.yCell,
+      cols: request.debug.cols,
+      rows: request.debug.rows,
+    });
+  }
+
+  socket.emit("token.move:in", payload, (response: TokenMoveAck) => {
+    if (!response?.ok) {
+      const existing = tokens.get(tokenId);
+      if (existing) {
+        localMoveVersions.set(tokenId, existing.version);
+      } else {
+        localMoveVersions.delete(tokenId);
+      }
+      handleWsError(response?.error ?? null, "TOKEN move");
+      request.revert();
+      return;
+    }
+
+    if (response.token.sceneId === currentSceneId) {
+      applyTokenUpdate(response.token);
+    }
+  });
+};
+
+const flushMoveQueue = () => {
+  lastMoveDispatch = Date.now();
+  const batch = Array.from(pendingMoves.entries());
+  pendingMoves.clear();
+  for (const [tokenId, request] of batch) {
+    dispatchMoveRequest(tokenId, request);
+  }
+};
+
+const scheduleMoveDispatch = () => {
+  if (!pendingMoves.size) {
+    return;
+  }
+  if (moveDispatchTimer !== null) {
+    return;
+  }
+
+  const elapsed = Date.now() - lastMoveDispatch;
+  const delay = Math.max(0, 50 - elapsed);
+
+  moveDispatchTimer = window.setTimeout(() => {
+    moveDispatchTimer = null;
+    if (!pendingMoves.size) {
+      return;
+    }
+    flushMoveQueue();
+    if (pendingMoves.size) {
+      scheduleMoveDispatch();
+    }
+  }, delay);
+};
+
+const enqueueMoveRequest = (tokenId: string, request: PendingMoveRequest) => {
+  pendingMoves.set(tokenId, request);
+  scheduleMoveDispatch();
+};
+
 const shouldApplyTokenUpdate = (token: TokenDTO): boolean => {
   const existing = tokens.get(token.id);
   if (!existing) {
@@ -147,6 +272,7 @@ const applyTokenUpdate = (token: TokenDTO) => {
   }
 
   tokens.set(token.id, token);
+  localMoveVersions.set(token.id, token.version);
   stage?.upsertToken(toRenderToken(token));
 };
 
@@ -211,11 +337,18 @@ const applySceneSnapshot = async (
   updateSceneInput(currentSceneId);
 
   tokens.clear();
+  localMoveVersions.clear();
+  pendingMoves.clear();
+  if (moveDispatchTimer !== null) {
+    window.clearTimeout(moveDispatchTimer);
+    moveDispatchTimer = null;
+  }
   const renderTokens: TokenRenderData[] = [];
 
   for (const token of sceneTokens) {
     if (!scene || token.sceneId === scene.id) {
       tokens.set(token.id, token);
+      localMoveVersions.set(token.id, token.version);
       renderTokens.push(toRenderToken(token));
     }
   }
@@ -599,37 +732,8 @@ const setupStage = async () => {
     });
   }
 
-  stage.setTokenMoveHandler((tokenId, target, revert) => {
-    const token = tokens.get(tokenId);
-    if (!socket || !token) {
-      appendLog("TOKEN move denied", { message: "Нет соединения с сервером" });
-      revert();
-      return;
-    }
-
-    const payload: TokenMoveIn = {
-      tokenId,
-      xCell: target.xCell,
-      yCell: target.yCell,
-      version: token.version,
-      updatedAt: token.updatedAt,
-    };
-
-    socket.emit(
-      "token.move:in",
-      payload,
-      (response: TokenMoveAck) => {
-        if (!response?.ok) {
-          handleWsError(response?.error ?? null, "TOKEN move");
-          revert();
-          return;
-        }
-
-        if (response.token.sceneId === currentSceneId) {
-          applyTokenUpdate(response.token);
-        }
-      }
-    );
+  stage.setTokenMoveHandler((tokenId, target, revert, debug) => {
+    enqueueMoveRequest(tokenId, { target, revert, debug });
   });
 
   refreshTokenPermissions();
