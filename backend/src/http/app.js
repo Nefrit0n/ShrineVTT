@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createErrorHandler, notFoundHandler, HttpError } from '../errors.js';
 import healthRouter from './routes/health.js';
 import createAuthRouter from './routes/auth.js';
+import readmeRouter from './routes/readme.js';
 
 const staticDir = path.resolve(
   fileURLToPath(new URL('../../../frontend/dist', import.meta.url)),
@@ -63,6 +64,7 @@ export function createApp({ logger, userRepository, jwt }) {
     throw new Error('jwt dependency is required');
   }
   app.use('/api/auth', createAuthRouter({ userRepository, jwt, logger }));
+  app.use('/api', readmeRouter);
 
   app.use(express.static(staticDir));
 
