@@ -57,6 +57,7 @@ export type TokenRenderData = {
   yCell: number;
   ownerUserId?: string | null;
   sprite?: string | null;
+  actorId?: string | null;
 };
 
 export type TokenMoveTarget = { xCell: number; yCell: number };
@@ -109,6 +110,8 @@ export class TokensLayer extends BaseCanvasLayer {
   private readonly tokenData = new Map<string, TokenRenderData>();
   private canMoveToken: (token: TokenRenderData) => boolean = () => false;
   private onMoveRequest: TokenMoveHandler | null = null;
+  private onTokenSelect: ((token: TokenRenderData | null) => void) | null = null;
+  private onTokenActivate: ((token: TokenRenderData) => void) | null = null;
   private dragState: DragState | null = null;
   private sceneWidth = 2048;
   private sceneHeight = 2048;
@@ -184,6 +187,16 @@ export class TokensLayer extends BaseCanvasLayer {
 
   public setMoveHandler(handler: TokenMoveHandler | null): void {
     this.onMoveRequest = handler;
+  }
+
+  public setSelectionHandler(
+    handler: ((token: TokenRenderData | null) => void) | null
+  ): void {
+    this.onTokenSelect = handler;
+  }
+
+  public setActivateHandler(handler: ((token: TokenRenderData) => void) | null): void {
+    this.onTokenActivate = handler;
   }
 
   public setSceneBounds({
@@ -400,6 +413,10 @@ export class TokensLayer extends BaseCanvasLayer {
 
     display.container.on("pointerdown", (event: FederatedPointerEvent) => {
       this.handleDragStart(tokenId, display, event);
+    });
+
+    display.container.on("pointertap", () => {
+      this.handleTokenTap(tokenId);
     });
 
     display.handlersAttached = true;
@@ -642,10 +659,6 @@ export class TokensLayer extends BaseCanvasLayer {
   }
 
   private setSelectedToken(tokenId: string | null): void {
-    if (this.selectedTokenId === tokenId) {
-      return;
-    }
-
     this.selectedTokenId = tokenId;
 
     for (const [id, display] of this.tokens.entries()) {
@@ -654,6 +667,11 @@ export class TokensLayer extends BaseCanvasLayer {
       if (token) {
         this.applyInteractivity(display, token);
       }
+    }
+
+    if (this.onTokenSelect) {
+      const token = tokenId ? this.tokenData.get(tokenId) ?? null : null;
+      this.onTokenSelect(token);
     }
   }
 
@@ -706,5 +724,22 @@ export class TokensLayer extends BaseCanvasLayer {
     const value = parsed ?? fallback;
     colorCache.set(variable, value);
     return value;
+  }
+
+  private handleTokenTap(tokenId: string): void {
+    if (this.dragState && this.dragState.tokenId === tokenId) {
+      return;
+    }
+
+    if (!this.onTokenActivate) {
+      return;
+    }
+
+    const token = this.tokenData.get(tokenId);
+    if (!token) {
+      return;
+    }
+
+    this.onTokenActivate(token);
   }
 }

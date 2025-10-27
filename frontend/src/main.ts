@@ -1,9 +1,16 @@
 import { io, type Socket } from "socket.io-client";
 import { PixiStage } from "./canvas/PixiStage";
 import { CanvasToolbar } from "./ui/Toolbar";
+import { CharacterSheet } from "./ui/CharacterSheet";
 import { toast } from "./ui/Toast";
 import type { MapDescriptor } from "./canvas/layers/MapLayer";
 import type { TokenMoveDebugInfo, TokenRenderData } from "./canvas/layers/TokensLayer";
+import {
+  getActor,
+  listActors,
+  updateActor,
+  type ActorDTO,
+} from "./api/actors";
 import type {
   ConnectedMessage,
   SceneDTO,
@@ -38,6 +45,9 @@ const pingButton = document.querySelector<HTMLButtonElement>("#ping-button");
 const announceButton = document.querySelector<HTMLButtonElement>("#announce-button");
 const loginForm = document.querySelector<HTMLFormElement>("#login-form");
 const tokenForm = document.querySelector<HTMLFormElement>("#token-form");
+const actorsRefreshButton = document.querySelector<HTMLButtonElement>("#actors-refresh");
+const actorsStatusText = document.querySelector<HTMLParagraphElement>("#actors-status");
+const actorsListEl = document.querySelector<HTMLUListElement>("#actors-list");
 const tokenControls = document.querySelector<HTMLFieldSetElement>("#token-controls");
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
 const gridToggle = document.querySelector<HTMLInputElement>("#grid-toggle");
@@ -60,6 +70,10 @@ const storedRole = window.sessionStorage.getItem("shrinevtt:role");
 let currentRole: ServerRole = storedRole === "MASTER" || storedRole === "PLAYER" ? storedRole : null;
 let stage: PixiStage | null = null;
 let toolbar: CanvasToolbar | null = null;
+let characterSheet: CharacterSheet;
+let actorsCache: ActorDTO[] = [];
+let actorsLoading = false;
+let highlightedActorId: string | null = null;
 const storedUserId = window.sessionStorage.getItem("shrinevtt:userId");
 let currentUserId: string | null = storedUserId && storedUserId.trim() ? storedUserId : null;
 const tokens = new Map<string, TokenDTO>();
@@ -108,6 +122,153 @@ const appendLog = (message: string, payload?: unknown) => {
   logContainer.prepend(entry);
 };
 
+const setActorsStatus = (message: string, tone: "default" | "error" = "default") => {
+  if (!actorsStatusText) {
+    return;
+  }
+  actorsStatusText.textContent = message;
+  actorsStatusText.classList.toggle("is-error", tone === "error");
+};
+
+const updateActorsPanelState = () => {
+  if (actorsRefreshButton) {
+    actorsRefreshButton.disabled = !authToken || actorsLoading;
+  }
+};
+
+const syncActorListHighlight = () => {
+  if (!actorsListEl) {
+    return;
+  }
+  const buttons = actorsListEl.querySelectorAll<HTMLButtonElement>(".actors-panel__actor");
+  buttons.forEach((button) => {
+    const id = button.dataset.actorId ?? "";
+    button.classList.toggle("is-active", Boolean(highlightedActorId) && id === highlightedActorId);
+  });
+};
+
+const highlightActor = (actorId: string | null) => {
+  highlightedActorId = actorId;
+  syncActorListHighlight();
+};
+
+const renderActorsList = () => {
+  if (!actorsListEl) {
+    return;
+  }
+
+  actorsListEl.replaceChildren();
+
+  if (!authToken) {
+    setActorsStatus("Войдите, чтобы увидеть связанных персонажей.");
+    highlightActor(null);
+    return;
+  }
+
+  if (actorsCache.length === 0) {
+    setActorsStatus("Персонажи не найдены.");
+    highlightActor(null);
+    return;
+  }
+
+  setActorsStatus("");
+
+  for (const actor of actorsCache) {
+    const item = document.createElement("li");
+    item.className = "actors-panel__item";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "actors-panel__actor";
+    button.dataset.actorId = actor.id;
+
+    const name = document.createElement("span");
+    name.className = "actors-panel__name";
+    name.textContent = actor.name;
+
+    const meta = document.createElement("span");
+    meta.className = "actors-panel__meta";
+    meta.textContent = `AC ${actor.ac} • HP ${actor.maxHP} • PB +${actor.profBonus}`;
+
+    button.append(name, meta);
+    button.addEventListener("click", () => {
+      highlightActor(actor.id);
+      openActorSheet(actor.id);
+    });
+
+    item.append(button);
+    actorsListEl.append(item);
+  }
+
+  syncActorListHighlight();
+};
+
+const upsertActorInCache = (actor: ActorDTO) => {
+  const index = actorsCache.findIndex((item) => item.id === actor.id);
+  if (index === -1) {
+    actorsCache = [...actorsCache, actor];
+  } else {
+    actorsCache = actorsCache.map((item, idx) => (idx === index ? actor : item));
+  }
+  renderActorsList();
+};
+
+const ensureAuthToken = (): string => {
+  if (!authToken) {
+    throw new Error("Требуется авторизация");
+  }
+  return authToken;
+};
+
+const refreshActorsList = async (): Promise<void> => {
+  if (!authToken) {
+    actorsCache = [];
+    highlightedActorId = null;
+    renderActorsList();
+    updateActorsPanelState();
+    return;
+  }
+
+  actorsLoading = true;
+  updateActorsPanelState();
+  setActorsStatus("Загрузка…");
+
+  try {
+    const items = await listActors(ensureAuthToken());
+    actorsCache = Array.isArray(items) ? items : [];
+    renderActorsList();
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Не удалось загрузить список персонажей";
+    setActorsStatus(message, "error");
+    toast.error(message);
+  } finally {
+    actorsLoading = false;
+    updateActorsPanelState();
+  }
+};
+
+function openActorSheet(actorId: string): void {
+  if (!authToken) {
+    toast.warn("Сначала войдите в систему");
+    return;
+  }
+
+  characterSheet.open(actorId);
+}
+
+characterSheet = new CharacterSheet({
+  loadActor: async (actorId) => getActor(actorId, ensureAuthToken()),
+  updateActor: async (actorId, payload) => updateActor(actorId, payload, ensureAuthToken()),
+  onActorUpdated: (actor) => {
+    upsertActorInCache(actor);
+    highlightActor(actor.id);
+  },
+});
+
+renderActorsList();
+updateActorsPanelState();
+
 const panelSectionToggles = Array.from(
   document.querySelectorAll<HTMLButtonElement>(".panel-section__toggle")
 );
@@ -122,6 +283,10 @@ for (const toggle of panelSectionToggles) {
     section.classList.toggle("is-collapsed");
   });
 }
+
+actorsRefreshButton?.addEventListener("click", () => {
+  void refreshActorsList();
+});
 
 if (panelToggle && layout) {
   panelToggle.addEventListener("click", () => {
@@ -409,6 +574,21 @@ const updateSceneInput = (sceneId: string | null) => {
   }
 };
 
+const extractActorId = (token: TokenDTO): string | null => {
+  const meta = token.meta;
+  if (!meta || typeof meta !== "object") {
+    return null;
+  }
+
+  const actorId = (meta as { actorId?: unknown }).actorId;
+  if (typeof actorId === "string") {
+    const trimmed = actorId.trim();
+    return trimmed ? trimmed : null;
+  }
+
+  return null;
+};
+
 const toRenderToken = (token: TokenDTO): TokenRenderData => ({
   id: token.id,
   name: token.name,
@@ -416,6 +596,7 @@ const toRenderToken = (token: TokenDTO): TokenRenderData => ({
   yCell: token.yCell,
   ownerUserId: token.ownerUserId,
   sprite: token.sprite,
+  actorId: extractActorId(token),
 });
 
 const updateStageWithSnapshot = async (
@@ -448,6 +629,7 @@ const applySceneSnapshot = async (
 ): Promise<void> => {
   currentSceneId = scene?.id ?? null;
   updateSceneInput(currentSceneId);
+  highlightActor(null);
 
   tokens.clear();
   localMoveVersions.clear();
@@ -524,6 +706,7 @@ const updateRole = (role: ServerRole) => {
 
   updateTokenControlsState();
   refreshTokenPermissions();
+  updateActorsPanelState();
 };
 
 const updateHttpStatus = (status: HttpStatus) => {
@@ -659,6 +842,7 @@ const authenticate = async (username: string, password: string) => {
     appendLog("HTTP login", result.user);
     updateHttpStatus("online");
     toast.info("Авторизация успешна");
+    void refreshActorsList();
     connectSocket();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -809,6 +993,7 @@ const bootstrap = async () => {
         updateHttpStatus("online");
         updateUserId(data.user?.id ?? null);
         updateRole(data.user?.role ?? null);
+        void refreshActorsList();
         connectSocket();
         return;
       }
@@ -817,6 +1002,10 @@ const bootstrap = async () => {
       window.sessionStorage.removeItem("shrinevtt:userId");
       authToken = null;
       updateUserId(null);
+      highlightActor(null);
+      characterSheet.close();
+      renderActorsList();
+      updateActorsPanelState();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       appendLog("Session check failed", { message });
@@ -899,6 +1088,20 @@ const setupStage = async () => {
 
   stage.setTokenMoveHandler((tokenId, target, revert, debug) => {
     enqueueMoveRequest(tokenId, { target, revert, debug });
+  });
+
+  stage.setTokenSelectionHandler((token) => {
+    const actorId = token?.actorId ?? null;
+    highlightActor(actorId);
+  });
+
+  stage.setTokenActivateHandler((token) => {
+    if (token.actorId) {
+      highlightActor(token.actorId);
+      openActorSheet(token.actorId);
+    } else {
+      toast.warn("У токена нет привязанного персонажа");
+    }
   });
 
   refreshTokenPermissions();

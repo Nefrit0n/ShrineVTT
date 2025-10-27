@@ -127,6 +127,23 @@
               </form>
             </div>
           </section>
+          <section class="panel-section" data-section="actors">
+            <button class="panel-section__toggle" type="button">
+              <span>Actors</span>
+              <span class="panel-section__chevron">⌄</span>
+            </button>
+            <div class="panel-section__content">
+              <div class="actions-stack">
+                <button class="btn btn--secondary" id="actors-refresh" type="button" disabled>
+                  Обновить список
+                </button>
+              </div>
+              <p class="actors-panel__status" id="actors-status">
+                Войдите, чтобы увидеть связанных персонажей.
+              </p>
+              <ul class="actors-panel__list" id="actors-list"></ul>
+            </div>
+          </section>
           <section class="panel-section" data-section="debug">
             <button class="panel-section__toggle" type="button">
               <span>Отладка</span>
