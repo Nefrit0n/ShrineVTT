@@ -1,7 +1,7 @@
 import { Application, Container, FederatedPointerEvent, Point } from "pixi.js";
 import { GridLayer } from "./GridLayer";
 import { MapDescriptor, MapLayer } from "./MapLayer";
-import { TokensLayer } from "./TokensLayer";
+import { TokensLayer, type TokenRenderData } from "./TokensLayer";
 
 type PixiStageOptions = {
   canvas: HTMLCanvasElement;
@@ -49,7 +49,7 @@ export class PixiStage {
 
     this.mapLayer = new MapLayer();
     this.gridLayer = new GridLayer(this.gridSize);
-    this.tokensLayer = new TokensLayer();
+    this.tokensLayer = new TokensLayer(this.gridSize);
 
     this.world.addChild(this.mapLayer);
     this.world.addChild(this.gridLayer);
@@ -94,6 +94,10 @@ export class PixiStage {
     await this.mapLayer.setBackground(descriptor);
     this.centerOnMap();
     this.requestGridUpdate();
+  }
+
+  public upsertToken(token: TokenRenderData): void {
+    this.tokensLayer.upsert(token);
   }
 
   private attachInteractionHandlers(canvas: HTMLCanvasElement): void {
