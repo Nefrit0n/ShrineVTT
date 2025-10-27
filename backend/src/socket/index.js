@@ -3,13 +3,9 @@ import { Server } from "socket.io";
 import { getConfig } from "#config/index.js";
 import { getSessionByToken } from "#auth/sessionService.js";
 import { Roles } from "#auth/roles.js";
-import { TokenService } from "#domain/services/TokenService.js";
 import { DomainError } from "#domain/errors/DomainError.js";
 import { sceneToPublicDTO } from "#domain/mappers/sceneMapper.js";
 import { tokenToDTO } from "#domain/mappers/tokenMapper.js";
-import { SceneRepository } from "#infra/repositories/SceneRepository.js";
-import { TokenRepository } from "#infra/repositories/TokenRepository.js";
-import { getDatabase } from "#storage/db.js";
 
 const TOKEN_MOVE_RATE_LIMIT_WINDOW_MS = 1000;
 const TOKEN_MOVE_RATE_LIMIT_MAX = 20;
@@ -164,7 +160,11 @@ const createWsError = (code, message, context = null) => ({
   },
 });
 
-export const initSocketServer = (httpServer) => {
+export const initSocketServer = (httpServer, { sceneUseCases, tokenUseCases }) => {
+  if (!sceneUseCases || !tokenUseCases) {
+    throw new Error("sceneUseCases and tokenUseCases must be provided to initSocketServer");
+  }
+
   const config = getConfig();
 
   const io = new Server(httpServer, {
@@ -176,27 +176,12 @@ export const initSocketServer = (httpServer) => {
 
   const gameNamespace = io.of("/game");
 
-  const db = getDatabase();
-  const sceneRepository = new SceneRepository(db);
-  const tokenRepository = new TokenRepository(db);
-  const tokenService = new TokenService({
-    sceneRepository,
-    tokenRepository,
-  });
-
   const loadActiveSceneSnapshot = async (roomId) => {
     if (!roomId) {
-      return null;
+      return { scene: null, tokens: [] };
     }
 
-    const scenes = await sceneRepository.listByRoom(roomId, { offset: 0, limit: 1 });
-    if (!scenes.length) {
-      return null;
-    }
-
-    const scene = scenes[0];
-    const tokens = await tokenRepository.listByScene(scene.id, { offset: 0, limit: null });
-    return { scene, tokens };
+    return sceneUseCases.getActiveSceneSnapshot(roomId);
   };
 
   gameNamespace.use(async (socket, next) => {
@@ -250,8 +235,8 @@ export const initSocketServer = (httpServer) => {
       try {
         const snapshot = await loadActiveSceneSnapshot(logicalRoomId);
         socket.emit("scene.snapshot", {
-          scene: snapshot ? sceneToPublicDTO(snapshot.scene) : null,
-          tokens: snapshot ? snapshot.tokens.map((token) => tokenToDTO(token)) : [],
+          scene: snapshot.scene ? sceneToPublicDTO(snapshot.scene) : null,
+          tokens: snapshot.tokens.map((token) => tokenToDTO(token)),
         });
       } catch (error) {
         console.error("Failed to send scene snapshot", error);
@@ -308,7 +293,7 @@ export const initSocketServer = (httpServer) => {
       }
 
       try {
-        const token = await tokenService.createToken({
+        const token = await tokenUseCases.createToken({
           sceneId: data.sceneId,
           ownerUserId:
             data.ownerUserId === undefined || data.ownerUserId === null
@@ -378,7 +363,7 @@ export const initSocketServer = (httpServer) => {
         socket.data.user.role === Roles.MASTER ? null : socket.data.user.id;
 
       try {
-        const token = await tokenService.moveToken(
+        const token = await tokenUseCases.moveToken(
           data.tokenId,
           { xCell: data.xCell, yCell: data.yCell },
           requesterId,

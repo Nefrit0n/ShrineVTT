@@ -1,7 +1,8 @@
 import { Application, Container, FederatedPointerEvent, Point } from "pixi.js";
-import { GridLayer } from "./GridLayer";
-import { MapDescriptor, MapLayer } from "./MapLayer";
-import { TokensLayer, type TokenRenderData } from "./TokensLayer";
+
+import { GridLayer } from "./layers/GridLayer";
+import { MapLayer, type MapDescriptor } from "./layers/MapLayer";
+import { TokensLayer, type TokenRenderData } from "./layers/TokensLayer";
 
 type PixiStageOptions = {
   canvas: HTMLCanvasElement;
@@ -51,11 +52,11 @@ export class PixiStage {
     this.gridLayer = new GridLayer(this.gridSize);
     this.tokensLayer = new TokensLayer(this.gridSize);
 
-    this.world.addChild(this.mapLayer);
-    this.world.addChild(this.gridLayer);
-    this.world.addChild(this.tokensLayer);
+    this.mapLayer.attach(this.world);
+    this.gridLayer.attach(this.world);
+    this.tokensLayer.attach(this.world);
 
-    this.gridLayer.visible = options.showGrid ?? true;
+    this.gridLayer.setVisible(options.showGrid ?? true);
 
     this.attachInteractionHandlers(options.canvas);
 
@@ -82,7 +83,7 @@ export class PixiStage {
   }
 
   public setGridVisible(isVisible: boolean): void {
-    this.gridLayer.visible = isVisible;
+    this.gridLayer.setVisible(isVisible);
     this.requestGridUpdate();
   }
 

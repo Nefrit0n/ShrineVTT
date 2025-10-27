@@ -11,7 +11,11 @@ process.env.DATA_DIR = dataDir;
 const { initDatabase, getDatabase } = await import("#storage/db.js");
 await initDatabase();
 
-const { default: app } = await import("../src/app.js");
+const { createApp } = await import("../src/app.js");
+const { createApplicationContainer } = await import("../src/application/container.js");
+
+const container = createApplicationContainer();
+const app = createApp(container);
 
 const server = createServer(app);
 

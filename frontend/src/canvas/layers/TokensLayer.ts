@@ -8,6 +8,12 @@ import {
   Texture,
 } from "pixi.js";
 
+import { BaseCanvasLayer } from "./CanvasLayer";
+import {
+  cellCenterToPixel,
+  pixelToCellFromCenter,
+} from "../utils/gridMath";
+
 export type TokenRenderData = {
   id: string;
   name: string;
@@ -17,6 +23,8 @@ export type TokenRenderData = {
   sprite?: string | null;
 };
 
+export type TokenMoveTarget = { xCell: number; yCell: number };
+
 type TokenDisplay = {
   container: Container;
   placeholder: Graphics;
@@ -24,8 +32,6 @@ type TokenDisplay = {
   sprite: Sprite | null;
   handlersAttached: boolean;
 };
-
-type TokenMoveTarget = { xCell: number; yCell: number };
 
 type TokenMoveHandler = (
   tokenId: string,
@@ -45,7 +51,7 @@ type DragState = {
   endListener: (event: FederatedPointerEvent) => void;
 };
 
-export class TokensLayer extends Container {
+export class TokensLayer extends BaseCanvasLayer {
   private gridSize: number;
   private readonly tokens = new Map<string, TokenDisplay>();
   private readonly tokenData = new Map<string, TokenRenderData>();
@@ -55,16 +61,14 @@ export class TokensLayer extends Container {
   private dragState: DragState | null = null;
 
   constructor(gridSize: number) {
-    super();
-    this.eventMode = "static";
-    this.sortableChildren = true;
+    super({ sortableChildren: true, eventMode: "static" });
     this.gridSize = gridSize;
 
     this.dragPreview = new Graphics();
     this.dragPreview.eventMode = "none";
     this.dragPreview.visible = false;
     this.dragPreview.zIndex = Number.MAX_SAFE_INTEGER;
-    this.addChild(this.dragPreview);
+    this.container.addChild(this.dragPreview);
   }
 
   public upsert(token: TokenRenderData): void {
@@ -73,7 +77,7 @@ export class TokensLayer extends Container {
     if (!display) {
       display = this.createDisplay(token.name);
       this.tokens.set(token.id, display);
-      this.addChild(display.container);
+      this.container.addChild(display.container);
       this.attachDragHandlers(token.id, display);
     }
 
@@ -163,8 +167,8 @@ export class TokensLayer extends Container {
 
   private updateDisplay(display: TokenDisplay, token: TokenRenderData): void {
     const { container, placeholder, label } = display;
-    const centerX = token.xCell * this.gridSize + this.gridSize / 2;
-    const centerY = token.yCell * this.gridSize + this.gridSize / 2;
+    const centerX = cellCenterToPixel(token.xCell, this.gridSize);
+    const centerY = cellCenterToPixel(token.yCell, this.gridSize);
 
     container.position.set(centerX, centerY);
     container.zIndex = token.yCell;
@@ -172,8 +176,7 @@ export class TokensLayer extends Container {
     label.text = token.name;
     this.configureTokenAppearance(display);
 
-    const spriteUrl =
-      typeof token.sprite === "string" ? token.sprite.trim() : "";
+    const spriteUrl = typeof token.sprite === "string" ? token.sprite.trim() : "";
 
     if (spriteUrl) {
       const texture = Texture.from(spriteUrl);
@@ -248,7 +251,7 @@ export class TokensLayer extends Container {
 
     this.tokenData.delete(tokenId);
     this.tokens.delete(tokenId);
-    this.removeChild(display.container);
+    this.container.removeChild(display.container);
     display.container.destroy({ children: true, texture: false, baseTexture: false });
   }
 
@@ -272,7 +275,7 @@ export class TokensLayer extends Container {
       event.nativeEvent.stopPropagation();
     }
 
-    const local = event.getLocalPosition(this);
+    const local = event.getLocalPosition(this.container);
     const offset = new Point(
       local.x - display.container.position.x,
       local.y - display.container.position.y
@@ -319,14 +322,14 @@ export class TokensLayer extends Container {
 
     event.preventDefault();
 
-    const local = event.getLocalPosition(this);
+    const local = event.getLocalPosition(this.container);
     const centerX = local.x - this.dragState.offset.x;
     const centerY = local.y - this.dragState.offset.y;
 
     this.dragState.display.container.position.set(centerX, centerY);
 
-    const xCell = this.toCellCoordinate(centerX);
-    const yCell = this.toCellCoordinate(centerY);
+    const xCell = pixelToCellFromCenter(centerX, this.gridSize);
+    const yCell = pixelToCellFromCenter(centerY, this.gridSize);
 
     if (
       xCell !== this.dragState.targetCell.xCell ||
@@ -369,8 +372,8 @@ export class TokensLayer extends Container {
     const canMove = token ? this.canMoveToken(token) : false;
     display.container.cursor = canMove ? "grab" : "default";
 
-    const snapCenterX = targetCell.xCell * this.gridSize + this.gridSize / 2;
-    const snapCenterY = targetCell.yCell * this.gridSize + this.gridSize / 2;
+    const snapCenterX = cellCenterToPixel(targetCell.xCell, this.gridSize);
+    const snapCenterY = cellCenterToPixel(targetCell.yCell, this.gridSize);
     display.container.position.set(snapCenterX, snapCenterY);
     display.container.zIndex = targetCell.yCell;
 
@@ -383,8 +386,8 @@ export class TokensLayer extends Container {
     }
 
     const revert = () => {
-      const revertCenterX = startCell.xCell * this.gridSize + this.gridSize / 2;
-      const revertCenterY = startCell.yCell * this.gridSize + this.gridSize / 2;
+      const revertCenterX = cellCenterToPixel(startCell.xCell, this.gridSize);
+      const revertCenterY = cellCenterToPixel(startCell.yCell, this.gridSize);
       display.container.position.set(revertCenterX, revertCenterY);
       display.container.zIndex = startCell.yCell;
     };
@@ -417,9 +420,5 @@ export class TokensLayer extends Container {
   private hidePreview(): void {
     this.dragPreview.visible = false;
     this.dragPreview.clear();
-  }
-
-  private toCellCoordinate(position: number): number {
-    return Math.round((position - this.gridSize / 2) / this.gridSize);
   }
 }
