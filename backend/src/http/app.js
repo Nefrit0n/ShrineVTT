@@ -1,9 +1,10 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createErrorHandler, notFoundHandler } from '../errors.js';
+import { createErrorHandler, notFoundHandler, HttpError } from '../errors.js';
 import healthRouter from './routes/health.js';
 import createAuthRouter from './routes/auth.js';
 
@@ -14,7 +15,43 @@ const staticDir = path.resolve(
 export function createApp({ logger, userRepository, jwt }) {
   const app = express();
 
-  app.use(cors());
+  const allowedOrigins = (process.env.CORS_ORIGIN ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  const corsOptions = {
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigins.length === 0) {
+        callback(
+          new HttpError(403, 'CORS origin not configured', {
+            code: 'CORS_ORIGIN_FORBIDDEN',
+          }),
+        );
+        return;
+      }
+
+      if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(
+        new HttpError(403, 'CORS origin denied', {
+          code: 'CORS_ORIGIN_FORBIDDEN',
+        }),
+      );
+    },
+    credentials: true,
+  };
+
+  app.use(helmet());
+  app.use(cors(corsOptions));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
