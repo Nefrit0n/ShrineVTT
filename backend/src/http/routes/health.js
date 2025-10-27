@@ -3,10 +3,13 @@ import { Router } from 'express';
 const router = Router();
 
 router.get('/', (req, res) => {
+  const rssMB = Math.round((process.memoryUsage().rss / 1024 / 1024) * 100) / 100;
+
   res.json({
     ok: true,
-    ts: Date.now(),
     pid: process.pid,
+    uptime: process.uptime(),
+    rssMB,
   });
 });
 
