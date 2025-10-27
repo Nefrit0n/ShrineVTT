@@ -53,9 +53,16 @@
         <div class="log" id="event-log"></div>
       </section>
       <section class="canvas-container">
-        <canvas id="scene" width="960" height="640"></canvas>
+        <div class="canvas-controls">
+          <label class="canvas-toggle">
+            <input type="checkbox" id="grid-toggle" checked />
+            <span>Показывать сетку</span>
+          </label>
+          <div class="canvas-scale">Масштаб: <span id="scale-indicator">100%</span></div>
+        </div>
+        <canvas id="scene"></canvas>
       </section>
     </main>
-    <script type="module" src="./main.js"></script>
+    <script type="module" src="./main.ts"></script>
   </body>
 </html>
