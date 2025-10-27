@@ -8,7 +8,7 @@ type GridState = {
 };
 
 export class GridLayer extends Container {
-  private readonly gridSize: number;
+  private gridSize: number;
   private readonly graphics: Graphics;
   private lastState: {
     startX: number;
@@ -25,6 +25,15 @@ export class GridLayer extends Container {
     this.addChild(this.graphics);
     this.sortableChildren = false;
     this.eventMode = "none";
+  }
+
+  public setGridSize(gridSize: number): void {
+    if (!Number.isFinite(gridSize) || gridSize <= 0 || gridSize === this.gridSize) {
+      return;
+    }
+
+    this.gridSize = gridSize;
+    this.lastState = null;
   }
 
   public update(state: GridState): void {

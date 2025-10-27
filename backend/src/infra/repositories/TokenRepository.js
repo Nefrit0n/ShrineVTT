@@ -54,7 +54,7 @@ export class TokenRepository {
     return tokenFromRecord(record);
   }
 
-  async listByScene(sceneId, { offset = 0, limit = 20 } = {}) {
+  async listByScene(sceneId, { offset = 0, limit = null } = {}) {
     await this.#ensureData();
     const filtered = this.db.data.tokens.filter((token) => token.sceneId === sceneId);
     const start = Math.max(0, offset);
@@ -62,7 +62,7 @@ export class TokenRepository {
     return filtered.slice(start, end).map((record) => tokenFromRecord(record));
   }
 
-  async listByRoom(roomId, { offset = 0, limit = 20 } = {}) {
+  async listByRoom(roomId, { offset = 0, limit = null } = {}) {
     await this.#ensureData();
     const sceneById = new Map(
       this.db.data.scenes.map((scene) => [scene.id, scene.roomId])

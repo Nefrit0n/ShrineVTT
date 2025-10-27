@@ -5,6 +5,7 @@ import { getSessionByToken } from "#auth/sessionService.js";
 import { Roles } from "#auth/roles.js";
 import { TokenService } from "#domain/services/TokenService.js";
 import { DomainError } from "#domain/errors/DomainError.js";
+import { sceneToPublicDTO } from "#domain/mappers/sceneMapper.js";
 import { tokenToDTO } from "#domain/mappers/tokenMapper.js";
 import { SceneRepository } from "#infra/repositories/SceneRepository.js";
 import { TokenRepository } from "#infra/repositories/TokenRepository.js";
@@ -132,6 +133,21 @@ export const initSocketServer = (httpServer) => {
     tokenRepository,
   });
 
+  const loadActiveSceneSnapshot = async (roomId) => {
+    if (!roomId) {
+      return null;
+    }
+
+    const scenes = await sceneRepository.listByRoom(roomId, { offset: 0, limit: 1 });
+    if (!scenes.length) {
+      return null;
+    }
+
+    const scene = scenes[0];
+    const tokens = await tokenRepository.listByScene(scene.id, { offset: 0, limit: null });
+    return { scene, tokens };
+  };
+
   gameNamespace.use(async (socket, next) => {
     const token = socket.handshake.auth?.token;
 
@@ -153,19 +169,35 @@ export const initSocketServer = (httpServer) => {
 
   gameNamespace.on("connection", (socket) => {
     const sessionId = socket.handshake.auth?.sessionId ?? "default";
-    const roomId = `session:${sessionId}`;
+    const logicalRoomId =
+      socket.data.session?.roomId ?? socket.data.session?.id ?? sessionId;
+    const roomChannel = `room:${logicalRoomId}`;
 
-    socket.join(roomId);
+    socket.join(roomChannel);
 
     socket.emit("connected", {
       message: "Connected to ShrineVTT",
       role: socket.data.user.role,
       sessionId,
+      roomId: logicalRoomId,
       user: {
         id: socket.data.user.id,
         username: socket.data.user.username,
       },
     });
+
+    void (async () => {
+      try {
+        const snapshot = await loadActiveSceneSnapshot(logicalRoomId);
+        socket.emit("scene.snapshot", {
+          scene: snapshot ? sceneToPublicDTO(snapshot.scene) : null,
+          tokens: snapshot ? snapshot.tokens.map((token) => tokenToDTO(token)) : [],
+        });
+      } catch (error) {
+        console.error("Failed to send scene snapshot", error);
+        socket.emit("scene.snapshot", { scene: null, tokens: [] });
+      }
+    })();
 
     socket.on("ping", (payload) => {
       socket.emit("pong", {
@@ -180,7 +212,7 @@ export const initSocketServer = (httpServer) => {
         return;
       }
 
-      gameNamespace.to(roomId).emit("announcement", {
+      gameNamespace.to(roomChannel).emit("announcement", {
         from: socket.data.user.username,
         message: payload?.message ?? "",
         at: new Date().toISOString(),
@@ -231,7 +263,7 @@ export const initSocketServer = (httpServer) => {
         });
 
         const dto = tokenToDTO(token);
-        gameNamespace.to(roomId).emit("token.create:out", { token: dto });
+        gameNamespace.to(roomChannel).emit("token.create:out", { token: dto });
         reply({ ok: true, token: dto });
       } catch (error) {
         if (error instanceof DomainError) {
@@ -280,7 +312,7 @@ export const initSocketServer = (httpServer) => {
         );
 
         const dto = tokenToDTO(token);
-        gameNamespace.to(roomId).emit("token.move:out", { token: dto });
+        gameNamespace.to(roomChannel).emit("token.move:out", { token: dto });
         reply({ ok: true, token: dto });
       } catch (error) {
         if (error instanceof DomainError) {

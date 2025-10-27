@@ -1,6 +1,7 @@
 import { io, type Socket } from "socket.io-client";
 import { PixiStage } from "./canvas/PixiStage";
 import type { MapDescriptor } from "./canvas/MapLayer";
+import type { TokenRenderData } from "./canvas/TokensLayer";
 
 type ServerRole = "MASTER" | "PLAYER" | null;
 
@@ -18,6 +19,20 @@ type TokenDTO = {
   sprite: string | null;
   visibility: string;
   meta: Record<string, unknown>;
+};
+
+type SceneDTO = {
+  id: string;
+  name: string;
+  gridSize: number;
+  mapImage: string | null;
+  widthPx: number;
+  heightPx: number;
+};
+
+type SceneSnapshotPayload = {
+  scene: SceneDTO | null;
+  tokens?: TokenDTO[];
 };
 
 type TokenCreateAck =
@@ -47,6 +62,7 @@ const tokenOwnerInput = tokenForm?.querySelector<HTMLInputElement>(
 const tokenSpriteInput = tokenForm?.querySelector<HTMLInputElement>("input[name=\"sprite\"]");
 const tokenXInput = tokenForm?.querySelector<HTMLInputElement>("input[name=\"xCell\"]");
 const tokenYInput = tokenForm?.querySelector<HTMLInputElement>("input[name=\"yCell\"]");
+const tokenSceneInput = tokenForm?.querySelector<HTMLInputElement>("input[name=\"sceneId\"]");
 
 let socket: Socket | null = null;
 let authToken: string | null = window.sessionStorage.getItem("shrinevtt:token");
@@ -56,6 +72,8 @@ let stage: PixiStage | null = null;
 const storedUserId = window.sessionStorage.getItem("shrinevtt:userId");
 let currentUserId: string | null = storedUserId && storedUserId.trim() ? storedUserId : null;
 const tokens = new Map<string, TokenDTO>();
+let currentSceneId: string | null = null;
+let pendingSnapshot: { scene: SceneDTO | null; tokens: TokenRenderData[] } | null = null;
 
 const formatTime = () => new Date().toLocaleTimeString();
 
@@ -68,6 +86,81 @@ const appendLog = (message: string, payload?: unknown) => {
   const formatted = payload ? `${message}: ${JSON.stringify(payload)}` : message;
   entry.textContent = `[${formatTime()}] ${formatted}`;
   logContainer.prepend(entry);
+};
+
+const updateTokenControlsState = () => {
+  if (tokenControls) {
+    tokenControls.disabled = currentRole !== "MASTER" || !currentSceneId;
+  }
+};
+
+const updateSceneInput = (sceneId: string | null) => {
+  if (!tokenSceneInput) {
+    return;
+  }
+
+  if (sceneId) {
+    tokenSceneInput.value = sceneId;
+    tokenSceneInput.placeholder = sceneId;
+  } else {
+    tokenSceneInput.value = "";
+    tokenSceneInput.placeholder = "scene-id";
+  }
+};
+
+const toRenderToken = (token: TokenDTO): TokenRenderData => ({
+  id: token.id,
+  name: token.name,
+  xCell: token.xCell,
+  yCell: token.yCell,
+  ownerUserId: token.ownerUserId,
+  sprite: token.sprite,
+});
+
+const updateStageWithSnapshot = async (
+  scene: SceneDTO | null,
+  renderTokens: TokenRenderData[]
+): Promise<void> => {
+  if (!stage) {
+    pendingSnapshot = { scene, tokens: renderTokens };
+    return;
+  }
+
+  pendingSnapshot = null;
+
+  if (scene) {
+    await stage.applyScene({
+      gridSize: scene.gridSize,
+      widthPx: scene.widthPx,
+      heightPx: scene.heightPx,
+      mapImage: scene.mapImage,
+    });
+    stage.setTokens(renderTokens);
+  } else {
+    stage.setTokens([]);
+  }
+};
+
+const applySceneSnapshot = async (
+  scene: SceneDTO | null,
+  sceneTokens: TokenDTO[]
+): Promise<void> => {
+  currentSceneId = scene?.id ?? null;
+  updateSceneInput(currentSceneId);
+
+  tokens.clear();
+  const renderTokens: TokenRenderData[] = [];
+
+  for (const token of sceneTokens) {
+    if (!scene || token.sceneId === scene.id) {
+      tokens.set(token.id, token);
+      renderTokens.push(toRenderToken(token));
+    }
+  }
+
+  await updateStageWithSnapshot(scene, renderTokens);
+  updateTokenControlsState();
+  refreshTokenPermissions();
 };
 
 const refreshTokenPermissions = () => {
@@ -112,10 +205,8 @@ const updateRole = (role: ServerRole) => {
   if (announceButton) {
     announceButton.disabled = role !== "MASTER";
   }
-  if (tokenControls) {
-    tokenControls.disabled = role !== "MASTER";
-  }
 
+  updateTokenControlsState();
   refreshTokenPermissions();
 };
 
@@ -174,6 +265,15 @@ const connectSocket = () => {
     }
   );
 
+  socket.on("scene.snapshot", (payload: SceneSnapshotPayload) => {
+    const sceneTokens = Array.isArray(payload.tokens) ? payload.tokens : [];
+    appendLog("SCENE snapshot", {
+      sceneId: payload.scene?.id ?? null,
+      tokens: sceneTokens.length,
+    });
+    void applySceneSnapshot(payload.scene ?? null, sceneTokens);
+  });
+
   socket.on("pong", (payload) => {
     appendLog("PONG", payload);
   });
@@ -188,8 +288,13 @@ const connectSocket = () => {
       sceneId: payload.token.sceneId,
       name: payload.token.name,
     });
+
+    if (payload.token.sceneId !== currentSceneId) {
+      return;
+    }
+
     tokens.set(payload.token.id, payload.token);
-    stage?.upsertToken(payload.token);
+    stage?.upsertToken(toRenderToken(payload.token));
   });
 
   socket.on("token.move:out", (payload: { token: TokenDTO }) => {
@@ -198,8 +303,13 @@ const connectSocket = () => {
       xCell: payload.token.xCell,
       yCell: payload.token.yCell,
     });
+
+    if (payload.token.sceneId !== currentSceneId) {
+      return;
+    }
+
     tokens.set(payload.token.id, payload.token);
-    stage?.upsertToken(payload.token);
+    stage?.upsertToken(toRenderToken(payload.token));
   });
 };
 
@@ -412,6 +522,12 @@ const setupStage = async () => {
       }
     },
   });
+
+  if (pendingSnapshot) {
+    const snapshot = pendingSnapshot;
+    pendingSnapshot = null;
+    await updateStageWithSnapshot(snapshot.scene, snapshot.tokens);
+  }
 
   if (gridToggle) {
     gridToggle.addEventListener("change", () => {

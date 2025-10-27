@@ -6,8 +6,5 @@ services:
     ports:
       - "${PORT:-8080}:8080"
     volumes:
-      - shrinevtt-data:/app/data
+      - ./data:/app/data
     restart: unless-stopped
-
-volumes:
-  shrinevtt-data:
