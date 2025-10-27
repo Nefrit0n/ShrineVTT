@@ -3,12 +3,37 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ShrineVTT</title>
+    <title>ShrineVTT — MVP</title>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main>
-      <h1>ShrineVTT</h1>
-      <p>Welcome to ShrineVTT backend static placeholder.</p>
-    </main>
+    <div class="app">
+      <header class="app__header">
+        <h1 class="app__title">ShrineVTT — MVP</h1>
+        <div class="app__status">
+          <span>Status:</span>
+          <span id="connection-status" class="status-indicator status-indicator--offline"
+            >OFFLINE</span
+          >
+          <span class="app__role">Role: <span id="role-indicator">GUEST</span></span>
+        </div>
+      </header>
+      <main class="app__main">
+        <aside class="app__sidebar">
+          <div class="controls">
+            <button id="ping-button" class="button" disabled>Send Ping</button>
+          </div>
+          <section class="log-panel">
+            <h2 class="log-panel__title">Event Log</h2>
+            <div id="log-entries" class="log-panel__entries"></div>
+          </section>
+        </aside>
+        <section class="app__canvas-container">
+          <canvas id="scene-canvas" class="scene-canvas" aria-label="Scene canvas"></canvas>
+        </section>
+      </main>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>
