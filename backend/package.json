@@ -1,0 +1,14 @@
+{
+  "name": "@shrinevtt/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node -e \"console.log('Starting backend dev server (placeholder)')\"",
+    "build": "node -e \"console.log('Building backend (placeholder)')\"",
+    "start": "node -e \"console.log('Starting backend in production (placeholder)')\""
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
