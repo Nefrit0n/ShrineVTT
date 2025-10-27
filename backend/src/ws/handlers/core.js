@@ -6,6 +6,7 @@ import {
   WS_ENVELOPE_EVENT,
 } from '../contracts.js';
 import log from '../../log.js';
+import { GUEST_ROLE } from '../../../../shared/auth.js';
 
 function emitEnvelope(target, type, payload, { rid, ts } = {}) {
   const envelope = {
@@ -29,7 +30,9 @@ function handleHandshake(socket, envelope, logger) {
 
   socket.data.client = client;
   socket.data.version = version;
-  socket.data.role = 'GUEST';
+  if (!socket.data.role) {
+    socket.data.role = GUEST_ROLE;
+  }
   socket.data.sessionId = socket.id;
   if (socket.data.roomId === undefined) {
     socket.data.roomId = null;
@@ -103,7 +106,7 @@ function handlePing(socket, envelope, logger) {
 export default function registerCoreHandlers(namespace, { logger = log } = {}) {
   namespace.on('connection', (socket) => {
     if (socket.data.role === undefined) {
-      socket.data.role = 'GUEST';
+      socket.data.role = GUEST_ROLE;
     }
     if (socket.data.roomId === undefined) {
       socket.data.roomId = null;
