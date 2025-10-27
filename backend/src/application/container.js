@@ -2,12 +2,14 @@ import { SceneService } from "#domain/services/SceneService.js";
 import { TokenService } from "#domain/services/TokenService.js";
 import { ActorService } from "#domain/services/ActorService.js";
 import { ItemService } from "#domain/services/ItemService.js";
+import { DiceEngine } from "#modules/dice/DiceEngine.js";
 import { SceneRepository } from "#infra/repositories/SceneRepository.js";
 import { TokenRepository } from "#infra/repositories/TokenRepository.js";
 import { ActorRepository } from "#infra/repositories/ActorRepository.js";
 import { ItemRepository } from "#infra/repositories/ItemRepository.js";
 import { SceneUseCases } from "./scenes/SceneUseCases.js";
 import { TokenUseCases } from "./tokens/TokenUseCases.js";
+import { DiceService } from "./services/DiceService.js";
 
 export const createApplicationContainer = ({ db } = {}) => {
   if (!db) {
@@ -31,6 +33,8 @@ export const createApplicationContainer = ({ db } = {}) => {
     actorRepository,
     itemRepository,
   });
+  const diceEngine = new DiceEngine();
+  const diceService = new DiceService({ diceEngine, actorService });
 
   const sceneUseCases = new SceneUseCases({ sceneService, tokenService });
   const tokenUseCases = new TokenUseCases({ tokenService });
@@ -40,5 +44,6 @@ export const createApplicationContainer = ({ db } = {}) => {
     tokenUseCases,
     actorService,
     itemService,
+    diceService,
   };
 };

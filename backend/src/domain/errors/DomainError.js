@@ -8,6 +8,7 @@ export class DomainError extends Error {
     INVALID_UPDATE: "INVALID_UPDATE",
     INVALID_ACTOR: "INVALID_ACTOR",
     INVALID_ITEM: "INVALID_ITEM",
+    INVALID_ROLL: "INVALID_ROLL",
   };
 
   constructor(code, message, details = undefined) {
