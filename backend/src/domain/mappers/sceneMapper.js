@@ -19,3 +19,12 @@ export const sceneToRecord = (scene) => ({
 });
 
 export const sceneToDTO = sceneToRecord;
+
+export const sceneToPublicDTO = (scene) => ({
+  id: scene.id,
+  name: scene.name,
+  gridSize: scene.gridSize,
+  mapImage: scene.mapImage,
+  widthPx: scene.widthPx,
+  heightPx: scene.heightPx,
+});

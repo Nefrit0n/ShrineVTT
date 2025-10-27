@@ -8,6 +8,7 @@ import morgan from "morgan";
 import { getConfig } from "#config/index.js";
 import authRouter from "#routes/auth.js";
 import sessionRouter from "#routes/session.js";
+import scenesRouter from "#routes/scenes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,6 +33,7 @@ app.get("/health", (req, res) => {
 
 app.use("/api/auth", authRouter);
 app.use("/api/session", sessionRouter);
+app.use("/api/scenes", scenesRouter);
 
 const staticDir = path.join(__dirname, "../static");
 app.use(express.static(staticDir));
