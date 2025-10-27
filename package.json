@@ -11,7 +11,8 @@
     "#storage/*": "./backend/src/storage/*",
     "#socket/*": "./backend/src/socket/*",
     "#domain/*": "./backend/src/domain/*",
-    "#infra/*": "./backend/src/infra/*"
+    "#infra/*": "./backend/src/infra/*",
+    "#modules/*": "./backend/src/modules/*"
   },
   "scripts": {
     "dev": "node --watch backend/src/server.js",
