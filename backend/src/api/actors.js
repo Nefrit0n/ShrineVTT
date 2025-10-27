@@ -262,6 +262,20 @@ export const createActorsRouter = ({ actorService } = {}) => {
 
   const router = Router();
 
+  router.get("/", requireAuth, async (req, res) => {
+    try {
+      const actors =
+        req.user.role === RolesEnum.MASTER
+          ? await actorService.listActors()
+          : await actorService.listActorsByOwner(req.user.id);
+
+      return res.json({ actors: actors.map((actor) => actorToDTO(actor)) });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: "Failed to load actors" });
+    }
+  });
+
   router.post("/", requireAuth, requireRole(RolesEnum.MASTER), async (req, res) => {
     const { valid, errors, data } = validateCreatePayload(req.body ?? {});
 

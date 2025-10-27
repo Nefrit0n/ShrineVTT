@@ -236,6 +236,18 @@ export class PixiStage {
     this.tokensLayer.setMoveHandler(handler);
   }
 
+  public setTokenSelectionHandler(
+    handler: ((token: TokenRenderData | null) => void) | null
+  ): void {
+    this.tokensLayer.setSelectionHandler(handler);
+  }
+
+  public setTokenActivateHandler(
+    handler: ((token: TokenRenderData) => void) | null
+  ): void {
+    this.tokensLayer.setActivateHandler(handler);
+  }
+
   private attachInteractionHandlers(canvas: HTMLCanvasElement): void {
     canvas.addEventListener(
       "wheel",
