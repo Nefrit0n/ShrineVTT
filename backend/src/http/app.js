@@ -30,14 +30,29 @@ export function createApp({
 
   const defaultCspDirectives = helmet.contentSecurityPolicy.getDefaultDirectives();
   const scriptSrc = defaultCspDirectives['script-src'] || ["'self'"];
+  const connectSrc = defaultCspDirectives['connect-src'] || ["'self'"];
+
+  const directives = {
+    ...defaultCspDirectives,
+    'script-src': Array.from(new Set([...scriptSrc, 'https://cdn.jsdelivr.net'])),
+  };
+
+  if (process.env.NODE_ENV !== 'production') {
+    directives['connect-src'] = Array.from(
+      new Set([
+        ...connectSrc,
+        'http://localhost:*',
+        'http://127.0.0.1:*',
+        'ws://localhost:*',
+        'ws://127.0.0.1:*',
+      ]),
+    );
+  }
 
   app.use(
     helmet({
       contentSecurityPolicy: {
-        directives: {
-          ...defaultCspDirectives,
-          'script-src': [...scriptSrc, 'https://cdn.jsdelivr.net'],
-        },
+        directives,
       },
     }),
   );
