@@ -8,10 +8,18 @@
 
 /**
  * @typedef {Object} User
- * @property {number} id
+ * @property {string} id
  * @property {string} username
  * @property {UserRole} role
  * @property {string} createdAt
+ */
+
+/**
+ * @typedef {Object} SessionUser
+ * @property {string} id
+ * @property {string} username
+ * @property {SessionRole} role
+ * @property {string | null} [sessionId]
  */
 
 export const USER_ROLES = Object.freeze({
@@ -20,3 +28,9 @@ export const USER_ROLES = Object.freeze({
 });
 
 export const GUEST_ROLE = 'GUEST';
+
+export const SESSION_ROLES = Object.freeze({
+  MASTER: USER_ROLES.MASTER,
+  PLAYER: USER_ROLES.PLAYER,
+  GUEST: GUEST_ROLE,
+});

@@ -7,6 +7,7 @@ export default function registerWsMiddleware(namespace, { logger, jwt }) {
       socket.data.role = 'PLAYER';
       socket.data.username = nickname ?? 'Adventurer';
       socket.data.sessionId = sessionId || null;
+      socket.data.userId = null;
     };
 
     if (token) {
@@ -14,7 +15,8 @@ export default function registerWsMiddleware(namespace, { logger, jwt }) {
         const user = jwt.verifyToken(token);
         socket.data.role = user.role;
         socket.data.username = user.username;
-        socket.data.sessionId = sessionId || null;
+        socket.data.sessionId = user.sessionId || sessionId || null;
+        socket.data.userId = user.id ?? null;
         logger.info({ role: user.role, user: user.username }, 'WS token auth');
       } catch (e) {
         logger.warn('Invalid JWT in handshake, falling back to PLAYER');
