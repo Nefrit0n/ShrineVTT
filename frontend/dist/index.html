@@ -1,127 +1,146 @@
 <!doctype html>
-<html lang="en">
-
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>ShrineVTT — Realm</title>
-
-  <!-- Fantasy/RPG typography -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Unna:wght@400;700&family=Inter:wght@400;600;700&display=swap"
-    rel="stylesheet" />
-
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-
-<body>
-  <div class="page">
-    <!-- Sky/constellation background -->
-    <div class="bg"></div>
-
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand__crest">⟐</span>
-        <h1 class="brand__title">ShrineVTT</h1>
-        <span class="brand__subtitle">The Wayfarer’s Table</span>
-      </div>
-
-      <div class="status">
-        <div class="status__item">
-          <span class="label">Status</span>
-          <span id="connection-status" class="pill pill--danger" title="WebSocket status">OFFLINE</span>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>ShrineVTT — виртуальный стол</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Montserrat:wght@600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar__brand">
+          <div class="brand-mark">ShrineVTT</div>
+          <div class="brand-tagline">Виртуальный стол для быстрых приключений</div>
         </div>
-        <div class="status__item">
-          <span class="label">Role</span>
-          <span id="role-indicator" class="pill">GUEST</span>
-        </div>
-      </div>
-    </header>
-
-    <main class="layout">
-      <!-- Session panel -->
-      <aside class="panel panel--parchment panel--narrow">
-        <div class="panel__section">
-          <h2 class="panel__title">Session</h2>
-          <div class="stack">
-            <button id="gm-login-open" class="btn btn--primary">
-              Enter as Game Master
-            </button>
-            <button id="join-open" class="btn">Join as Adventurer</button>
-            <button id="ping-button" class="btn btn--ghost" disabled>
-              Send Ping
-            </button>
+        <div class="topbar__status">
+          <div class="status-block">
+            <span class="status-block__label">Роль</span>
+            <span id="role-indicator" class="pill">Гость</span>
+          </div>
+          <div class="status-block">
+            <span class="status-block__label">Состояние</span>
+            <span id="connection-status" class="pill pill--danger">Офлайн</span>
+          </div>
+          <div class="status-block status-block--code">
+            <span class="status-block__label">Код сессии</span>
+            <button id="session-code" class="code" type="button" disabled>—</button>
           </div>
         </div>
-
-        <div class="panel__section">
-          <h3 class="panel__subtitle">Event Log</h3>
-          <div id="log-entries" class="log"></div>
+        <div class="topbar__actions">
+          <button id="gm-login-open" class="btn btn--primary" type="button">Запустить сессию</button>
+          <button id="join-open" class="btn" type="button">Присоединиться</button>
+          <button id="disconnect-btn" class="btn btn--ghost" type="button">Отключиться</button>
         </div>
-      </aside>
-
-      <!-- Scene canvas -->
-      <section class="scene">
-        <canvas id="scene-canvas" class="scene__canvas" aria-label="Scene"></canvas>
-        <div class="scene__frame"></div>
-      </section>
-    </main>
-  </div>
-
-  <!-- Modal: GM Login -->
-  <div id="modal-gm" class="modal" aria-hidden="true">
-    <div class="modal__backdrop" data-close></div>
-    <div class="modal__dialog panel panel--parchment">
-      <header class="modal__header">
-        <h3 class="panel__title">Game Master’s Seal</h3>
-        <button class="modal__close" title="Close" data-close>✕</button>
       </header>
-      <div class="modal__body">
-        <label class="field">
-          <span class="field__label">Password</span>
-          <input id="gm-password" class="field__input" type="password" placeholder="Enter GM password"
-            autocomplete="current-password" />
-        </label>
-        <div class="hint">
-          This password is configured by the host of the realm.
-        </div>
+
+      <div class="workspace">
+        <aside class="sidebar" id="control-panel">
+          <section class="sidebar__section" data-role="gm">
+            <h2 class="sidebar__title">Инструменты ведущего</h2>
+            <p class="sidebar__hint">Управляйте картой, токенами и игроками.</p>
+            <div class="sidebar__grid">
+              <button class="btn btn--ghost" type="button" disabled>Добавить токен</button>
+              <button class="btn btn--ghost" type="button" disabled>Туман войны</button>
+              <button class="btn btn--ghost" type="button" disabled>Быстрый бросок</button>
+              <button class="btn btn--ghost" type="button" disabled>Список игроков</button>
+            </div>
+          </section>
+          <section class="sidebar__section" data-role="player">
+            <h2 class="sidebar__title">Действия игрока</h2>
+            <p class="sidebar__hint">Двигайте токен, бросайте кубы и общайтесь.</p>
+            <div class="sidebar__grid">
+              <button class="btn btn--ghost" type="button" disabled>Передвинуть токен</button>
+              <button class="btn btn--ghost" type="button" disabled>Бросить кубы</button>
+              <button class="btn btn--ghost" type="button" disabled>Отправить сигнал</button>
+              <button id="ping-button" class="btn btn--ghost" type="button" disabled>Пинг сервера</button>
+            </div>
+          </section>
+        </aside>
+
+        <main class="board">
+          <div class="board__header">
+            <h2 class="board__title">Игровое поле</h2>
+            <p class="board__description">
+              Пространство для карты, токенов, сетки и будущих эффектов тумана войны.
+            </p>
+          </div>
+          <div class="board__canvas-wrapper">
+            <canvas id="scene-canvas" class="board__canvas" aria-label="Игровая сцена"></canvas>
+            <div class="board__overlay">
+              <div class="overlay-pill">Готово к приключению</div>
+            </div>
+          </div>
+        </main>
       </div>
-      <footer class="modal__footer">
-        <button class="btn btn--ghost" data-close>Cancel</button>
-        <button id="gm-login-btn" class="btn btn--primary">Enter</button>
+
+      <footer class="logbar">
+        <div class="logbar__header">
+          <h2 class="logbar__title">События</h2>
+          <div class="logbar__hint">История подключений, сообщений и системных событий</div>
+        </div>
+        <div id="log-entries" class="logbar__entries"></div>
       </footer>
     </div>
-  </div>
 
-  <!-- Modal: Join Session -->
-  <div id="modal-join" class="modal" aria-hidden="true">
-    <div class="modal__backdrop" data-close></div>
-    <div class="modal__dialog panel panel--parchment">
-      <header class="modal__header">
-        <h3 class="panel__title">Join the Party</h3>
-        <button class="modal__close" title="Close" data-close>✕</button>
-      </header>
-      <div class="modal__body grid grid--2">
-        <label class="field">
-          <span class="field__label">Nickname</span>
-          <input id="join-nickname" class="field__input" type="text" placeholder="e.g., Nefriton" maxlength="32" />
-        </label>
-        <label class="field">
-          <span class="field__label">Session Code</span>
-          <input id="join-session" class="field__input" type="text" placeholder="e.g., ABR7" maxlength="24" />
-        </label>
+    <div id="modal-gm" class="modal" aria-hidden="true">
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__dialog">
+        <header class="modal__header">
+          <h3 class="modal__title">Вход ведущего</h3>
+          <button class="modal__close" title="Закрыть" type="button" data-close>✕</button>
+        </header>
+        <div class="modal__body">
+          <label class="field">
+            <span class="field__label">Пароль</span>
+            <input
+              id="gm-password"
+              class="field__input"
+              type="password"
+              placeholder="Введите пароль ведущего"
+              autocomplete="current-password"
+            />
+          </label>
+          <p class="field__hint">Пароль задаётся администратором стола.</p>
+        </div>
+        <footer class="modal__footer">
+          <button class="btn btn--ghost" type="button" data-close>Отмена</button>
+          <button id="gm-login-btn" class="btn btn--primary" type="button">Войти</button>
+        </footer>
       </div>
-      <footer class="modal__footer">
-        <button class="btn btn--ghost" data-close>Cancel</button>
-        <button id="join-session-btn" class="btn btn--primary">Join</button>
-      </footer>
     </div>
-  </div>
 
-  <!-- Socket.io runtime -->
-  <script src="/socket.io/socket.io.js"></script>
-  <!-- App -->
-  <script type="module" src="./app.js"></script>
-</body>
+    <div id="modal-join" class="modal" aria-hidden="true">
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__dialog">
+        <header class="modal__header">
+          <h3 class="modal__title">Присоединиться к сессии</h3>
+          <button class="modal__close" title="Закрыть" type="button" data-close>✕</button>
+        </header>
+        <div class="modal__body modal__body--grid">
+          <label class="field">
+            <span class="field__label">Никнейм</span>
+            <input id="join-nickname" class="field__input" type="text" placeholder="Например, Ледяной Волк" maxlength="32" />
+          </label>
+          <label class="field">
+            <span class="field__label">Код сессии</span>
+            <input id="join-session" class="field__input" type="text" placeholder="Например, ABR7" maxlength="24" />
+          </label>
+        </div>
+        <footer class="modal__footer">
+          <button class="btn btn--ghost" type="button" data-close>Отмена</button>
+          <button id="join-session-btn" class="btn btn--primary" type="button">Подключиться</button>
+        </footer>
+      </div>
+    </div>
 
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
 </html>
