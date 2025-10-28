@@ -88,8 +88,85 @@
           </header>
           <ul class="tool-list tool-list--grid">
             <li class="tool-list__item">
-              <span class="tool-list__label">Карта и туман</span>
-              <span class="tool-list__meta">Скоро здесь появится управление сеткой и туманом войны.</span>
+              <div>
+                <span class="tool-list__label">Карта и туман</span>
+                <p class="tool-list__meta">Подготовьте сцену и отметьте её активной для игроков.</p>
+              </div>
+              <form id="create-scene-form" class="scene-form">
+                <div class="scene-form__row">
+                  <label class="field scene-form__field" for="scene-name-input">
+                    <span class="field__label">Название</span>
+                    <input
+                      id="scene-name-input"
+                      name="name"
+                      class="field__input"
+                      type="text"
+                      placeholder="Лунный зал"
+                      autocomplete="off"
+                      required
+                    />
+                  </label>
+                </div>
+                <div class="scene-form__row scene-form__row--grid">
+                  <label class="field scene-form__field" for="scene-grid-input">
+                    <span class="field__label">Размер клетки (px)</span>
+                    <input
+                      id="scene-grid-input"
+                      name="gridSize"
+                      class="field__input"
+                      type="number"
+                      min="10"
+                      step="10"
+                      value="100"
+                      required
+                    />
+                  </label>
+                  <label class="field scene-form__field" for="scene-width-input">
+                    <span class="field__label">Ширина (px)</span>
+                    <input
+                      id="scene-width-input"
+                      name="widthPx"
+                      class="field__input"
+                      type="number"
+                      min="100"
+                      step="50"
+                      value="1400"
+                      required
+                    />
+                  </label>
+                  <label class="field scene-form__field" for="scene-height-input">
+                    <span class="field__label">Высота (px)</span>
+                    <input
+                      id="scene-height-input"
+                      name="heightPx"
+                      class="field__input"
+                      type="number"
+                      min="100"
+                      step="50"
+                      value="1000"
+                      required
+                    />
+                  </label>
+                </div>
+                <div class="scene-form__actions">
+                  <button id="create-scene-submit" class="btn btn--primary scene-form__submit" type="submit">
+                    Создать
+                  </button>
+                </div>
+              </form>
+              <p id="scene-form-status" class="scene-form__status" role="status">
+                Создайте или загрузите сессию, чтобы подготовить сцену.
+              </p>
+              <div id="scene-form-result" class="scene-form__result" hidden>
+                <div class="scene-form__summary">
+                  <span id="scene-form-result-name" class="scene-form__name"></span>
+                  <span id="scene-form-result-badge" class="pill pill--ok" hidden>Активная</span>
+                </div>
+                <p id="scene-form-result-text" class="scene-form__hint"></p>
+                <button id="scene-form-make-active" class="btn btn--secondary scene-form__action" type="button">
+                  Сделать активной
+                </button>
+              </div>
             </li>
             <li class="tool-list__item">
               <span class="tool-list__label">Инициатива</span>
