@@ -62,6 +62,31 @@ db.exec(`
     PRIMARY KEY (sessionId, userId),
     FOREIGN KEY (sessionId) REFERENCES sessions(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS scenes (
+    id TEXT PRIMARY KEY,
+    sessionId TEXT NOT NULL,
+    name TEXT NOT NULL,
+    gridSize INTEGER NOT NULL,
+    widthPx INTEGER NOT NULL,
+    heightPx INTEGER NOT NULL,
+    mapImage TEXT,
+    createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (sessionId) REFERENCES sessions(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS tokens (
+    id TEXT PRIMARY KEY,
+    sceneId TEXT NOT NULL,
+    ownerUserId TEXT,
+    name TEXT NOT NULL,
+    xCell INTEGER NOT NULL,
+    yCell INTEGER NOT NULL,
+    sprite TEXT,
+    version INTEGER NOT NULL DEFAULT 0,
+    updatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (sceneId) REFERENCES scenes(id) ON DELETE CASCADE
+  );
 `);
 
 export default db;
