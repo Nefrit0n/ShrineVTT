@@ -30,17 +30,6 @@ const STATUS_CLASSES = {
   OFFLINE: 'pill--danger',
 };
 
-const STATUS_LABELS = {
-  ONLINE: 'В сети',
-  OFFLINE: 'Не в сети',
-};
-
-const ROLE_LABELS = {
-  MASTER: 'Мастер',
-  PLAYER: 'Игрок',
-  GUEST: 'Гость',
-};
-
 function logEvent(message, details) {
   const entry = document.createElement('article');
   entry.className = 'log-entry';
@@ -67,7 +56,7 @@ function logEvent(message, details) {
 }
 
 function setStatus(status) {
-  statusEl.textContent = STATUS_LABELS[status] ?? status;
+  statusEl.textContent = status;
   statusEl.classList.remove(STATUS_CLASSES.ONLINE, STATUS_CLASSES.OFFLINE);
   statusEl.classList.add(STATUS_CLASSES[status] ?? STATUS_CLASSES.OFFLINE);
   if (status === 'ONLINE') pingButton.removeAttribute('disabled');
@@ -75,12 +64,7 @@ function setStatus(status) {
 }
 
 function updateRole(role) {
-  const fallback = ROLE_LABELS.GUEST;
-  if (!role) {
-    roleEl.textContent = fallback;
-    return;
-  }
-  roleEl.textContent = ROLE_LABELS[role] ?? fallback;
+  roleEl.textContent = role ?? 'GUEST';
 }
 
 function resizeCanvas() {
@@ -98,9 +82,7 @@ const pendingPings = new Map();
 let socket = window.io('/ws', { autoConnect: false });
 
 // GM Login flow (modal)
-document
-  .querySelectorAll('#gm-login-open, [data-trigger="gm"]')
-  .forEach((el) => el.addEventListener('click', () => gmModal.open()));
+document.getElementById('gm-login-open').addEventListener('click', () => gmModal.open());
 document.getElementById('gm-login-btn').addEventListener('click', async () => {
   const passEl = document.getElementById('gm-password');
   const password = passEl.value.trim();
@@ -114,7 +96,7 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
     });
 
     if (!res.ok) {
-      logEvent('Не удалось войти как мастер');
+      logEvent('GM login failed');
       return;
     }
 
@@ -125,14 +107,12 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
     socket.auth = { token };
     socket.connect();
   } catch (err) {
-    logEvent('Сбой входа мастера', err?.message ?? String(err));
+    logEvent('GM login error', err?.message ?? String(err));
   }
 });
 
 // Player Join flow (modal)
-document
-  .querySelectorAll('#join-open, [data-trigger="join"]')
-  .forEach((el) => el.addEventListener('click', () => joinModal.open()));
+document.getElementById('join-open').addEventListener('click', () => joinModal.open());
 document.getElementById('join-session-btn').addEventListener('click', () => {
   const nickname = document.getElementById('join-nickname').value.trim();
   const sessionId = document.getElementById('join-session').value.trim() || null;
@@ -164,24 +144,24 @@ socket.on('connect', () => {
   };
 
   socket.emit('message', envelope);
-  logEvent('Рукопожатие отправлено', envelope);
+  logEvent('Handshake sent', envelope);
 });
 
 socket.on('disconnect', (reason) => {
   setStatus('OFFLINE');
-  logEvent(`Отключение: ${reason}`);
+  logEvent(`Disconnected: ${reason}`);
   updateRole('GUEST');
   pendingPings.clear();
 });
 
 socket.on('connect_error', (error) => {
   setStatus('OFFLINE');
-  logEvent('Ошибка соединения', error?.message ?? error);
+  logEvent('Connection error', error?.message ?? error);
 });
 
 socket.on('message', (envelope) => {
   if (!envelope || typeof envelope !== 'object') {
-    logEvent('Получен некорректный пакет');
+    logEvent('Received malformed envelope');
     return;
   }
 
@@ -190,7 +170,7 @@ socket.on('message', (envelope) => {
     case 'core.handshake:out': {
       const role = payload?.role ?? 'GUEST';
       updateRole(role);
-      logEvent('Рукопожатие подтверждено', {
+      logEvent('Handshake acknowledged', {
         role,
         sessionId: payload?.sessionId ?? null,
         ts,
@@ -202,16 +182,16 @@ socket.on('message', (envelope) => {
       const started = pendingPings.get(rid);
       pendingPings.delete(rid);
       const latency = started !== undefined ? (performance.now() - started).toFixed(1) : null;
-      logEvent('Получен отклик', {
+      logEvent('Pong received', {
         rid,
-        latency: latency ? `${latency} мс` : 'н/д',
+        latency: latency ? `${latency} ms` : 'n/a',
         payloadTs: payload?.ts,
         ts,
       });
       break;
     }
     default:
-      logEvent(`Получен пакет: ${type}`, envelope);
+      logEvent(`Received envelope: ${type}`, envelope);
   }
 });
 
