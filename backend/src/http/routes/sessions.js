@@ -18,9 +18,12 @@ function sanitizeUsername(raw) {
   return trimmed.slice(0, 32);
 }
 
-export default function createSessionsRouter({ sessionRepository, jwt, logger }) {
+export default function createSessionsRouter({ sessionRepository, playerStateRepository, jwt, logger }) {
   if (!sessionRepository) {
     throw new Error('sessionRepository dependency is required');
+  }
+  if (!playerStateRepository) {
+    throw new Error('playerStateRepository dependency is required');
   }
   if (!jwt) {
     throw new Error('jwt dependency is required');
@@ -90,6 +93,8 @@ export default function createSessionsRouter({ sessionRepository, jwt, logger })
       role,
       username,
     });
+
+    playerStateRepository.ensurePlayerState({ sessionId: session.id, userId, username });
 
     const token = jwt.signUser({
       id: userId,
