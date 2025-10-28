@@ -1,49 +1,57 @@
 # syntax=docker/dockerfile:1
+
+#############################################
+# Backend deps build (native modules)
+#############################################
 FROM node:20-alpine AS deps
 
 WORKDIR /app
 
-# Устанавливаем зависимости backend
+# Ставим зависимости для сборки native модулей
+RUN apk add --no-cache python3 make g++ bash
+
+# Backend deps
 COPY backend/package*.json ./backend/
 RUN cd backend && npm install --omit=dev
 
-# Устанавливаем зависимости shared
-COPY shared/package*.json ./shared/
-RUN cd shared && npm install --omit=dev
+#############################################
+# Frontend build
+#############################################
+FROM node:20-alpine AS frontend-build
+WORKDIR /app/frontend
 
-# Устанавливаем зависимости frontend
-COPY frontend/package*.json ./frontend/
-RUN cd frontend && npm install --omit=dev
+RUN apk add --no-cache python3 make g++
+COPY frontend/package*.json ./
+RUN npm install --omit=dev
 
-###########################################################
-# Build frontend
-###########################################################
-FROM deps AS frontend-build
+COPY frontend .
+RUN npm run build
 
-COPY frontend ./frontend
-RUN cd frontend && npm run build
-
-###########################################################
-# Production runner
-###########################################################
+#############################################
+# Runtime container (мини)
+#############################################
 FROM node:20-alpine AS runner
 
 WORKDIR /app
+ENV NODE_ENV=production \
+    DATA_DIR="/app/data"
 
-ENV NODE_ENV=production
+# Копируем код
+COPY backend ./backend
+COPY shared ./shared
 
-# Копируем backend + собраный frontend + shared
-COPY --from=deps /app/backend ./backend
-COPY --from=deps /app/shared ./shared
+# node_modules только для backend
+COPY --from=deps /app/backend/node_modules ./backend/node_modules
+
+# Копируем собранный фронт
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
-# Удаляем dev-зависимости Node и сборочные пакеты Alpine
-RUN apk add --no-cache --virtual .build-deps python3 make g++ \
-    && cd backend && npm install --omit=dev \
-    && cd ../shared && npm install --omit=dev \
-    && npm cache clean --force \
-    && apk del .build-deps
+# Создаём каталог под БД (volume потом заменит, но структура нужна)
+RUN mkdir -p /app/data \
+    && chown -R node:node /app/data
 
 USER node
+WORKDIR /app/backend
+
 EXPOSE 8080
-CMD ["node", "./backend/src/server.js"]
+CMD ["node", "src/server.js"]

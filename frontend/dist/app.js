@@ -5,9 +5,29 @@ const logContainer = document.getElementById('log-entries');
 const canvas = document.getElementById('scene-canvas');
 const ctx = canvas.getContext('2d');
 
+// Modal helpers
+function modal(el) {
+  return {
+    open: () => el.setAttribute('data-open', 'true'),
+    close: () => el.removeAttribute('data-open'),
+    el,
+  };
+}
+
+const gmModal = modal(document.getElementById('modal-gm'));
+const joinModal = modal(document.getElementById('modal-join'));
+
+// Close by backdrop or ✕
+document.querySelectorAll('[data-close]').forEach((n) =>
+  n.addEventListener('click', () => {
+    gmModal.close();
+    joinModal.close();
+  }),
+);
+
 const STATUS_CLASSES = {
-  ONLINE: 'status-indicator--online',
-  OFFLINE: 'status-indicator--offline',
+  ONLINE: 'pill--ok',
+  OFFLINE: 'pill--danger',
 };
 
 function logEvent(message, details) {
@@ -19,16 +39,16 @@ function logEvent(message, details) {
   time.textContent = new Date().toLocaleTimeString();
   entry.appendChild(time);
 
-  const body = document.createElement('p');
+  const body = document.createElement('div');
   body.className = 'log-entry__message';
   body.textContent = message;
   entry.appendChild(body);
 
   if (details !== undefined) {
-    const detailBlock = document.createElement('pre');
-    detailBlock.className = 'log-entry__details';
-    detailBlock.textContent = typeof details === 'string' ? details : JSON.stringify(details, null, 2);
-    entry.appendChild(detailBlock);
+    const pre = document.createElement('pre');
+    pre.className = 'log-entry__details';
+    pre.textContent = typeof details === 'string' ? details : JSON.stringify(details, null, 2);
+    entry.appendChild(pre);
   }
 
   logContainer.appendChild(entry);
@@ -38,13 +58,9 @@ function logEvent(message, details) {
 function setStatus(status) {
   statusEl.textContent = status;
   statusEl.classList.remove(STATUS_CLASSES.ONLINE, STATUS_CLASSES.OFFLINE);
-  const className = STATUS_CLASSES[status] ?? STATUS_CLASSES.OFFLINE;
-  statusEl.classList.add(className);
-  if (status === 'ONLINE') {
-    pingButton.removeAttribute('disabled');
-  } else {
-    pingButton.setAttribute('disabled', '');
-  }
+  statusEl.classList.add(STATUS_CLASSES[status] ?? STATUS_CLASSES.OFFLINE);
+  if (status === 'ONLINE') pingButton.removeAttribute('disabled');
+  else pingButton.setAttribute('disabled', '');
 }
 
 function updateRole(role) {
@@ -57,109 +73,143 @@ function resizeCanvas() {
   canvas.height = rect.height;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
-
 resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
+addEventListener('resize', resizeCanvas);
 
 const createRid = () => (crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-
 const pendingPings = new Map();
 
-function sendHandshake(socket) {
-  const rid = createRid();
-  const envelope = {
-    type: 'core.handshake:in',
-    rid,
-    ts: Date.now(),
-    payload: {
-      client: 'frontend',
-      version: '0.1.0',
-    },
-  };
-  socket.emit('message', envelope);
-  logEvent('Handshake sent', envelope);
+let socket = window.io('/ws', { autoConnect: false });
+
+// GM Login flow (modal)
+document.getElementById('gm-login-open').addEventListener('click', () => gmModal.open());
+document.getElementById('gm-login-btn').addEventListener('click', async () => {
+  const passEl = document.getElementById('gm-password');
+  const password = passEl.value.trim();
+  if (!password) return;
+
+  try {
+    const res = await fetch('/api/auth/gm-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+
+    if (!res.ok) {
+      logEvent('GM login failed');
+      return;
+    }
+
+    const { token } = await res.json();
+    localStorage.setItem('jwt', token);
+    gmModal.close();
+
+    socket.auth = { token };
+    socket.connect();
+  } catch (err) {
+    logEvent('GM login error', err?.message ?? String(err));
+  }
+});
+
+// Player Join flow (modal)
+document.getElementById('join-open').addEventListener('click', () => joinModal.open());
+document.getElementById('join-session-btn').addEventListener('click', () => {
+  const nickname = document.getElementById('join-nickname').value.trim();
+  const sessionId = document.getElementById('join-session').value.trim() || null;
+  if (!nickname) return;
+
+  joinModal.close();
+  socket.auth = { nickname, sessionId };
+  socket.connect();
+});
+
+const tokenFromStorage = localStorage.getItem('jwt');
+if (tokenFromStorage) {
+  socket.auth = { token: tokenFromStorage };
+  socket.connect();
 }
 
-function sendPing(socket) {
+socket.on('connect', () => {
+  setStatus('ONLINE');
+
+  const token = localStorage.getItem('jwt') || null;
+  const { nickname, sessionId } = socket.auth || {};
+  const role = token ? 'MASTER' : 'PLAYER';
+
+  const envelope = {
+    type: 'core.handshake:in',
+    rid: createRid(),
+    ts: Date.now(),
+    payload: { role, nickname, sessionId, token },
+  };
+
+  socket.emit('message', envelope);
+  logEvent('Handshake sent', envelope);
+});
+
+socket.on('disconnect', (reason) => {
+  setStatus('OFFLINE');
+  logEvent(`Disconnected: ${reason}`);
+  updateRole('GUEST');
+  pendingPings.clear();
+});
+
+socket.on('connect_error', (error) => {
+  setStatus('OFFLINE');
+  logEvent('Connection error', error?.message ?? error);
+});
+
+socket.on('message', (envelope) => {
+  if (!envelope || typeof envelope !== 'object') {
+    logEvent('Received malformed envelope');
+    return;
+  }
+
+  const { type, rid, payload, ts } = envelope;
+  switch (type) {
+    case 'core.handshake:out': {
+      const role = payload?.role ?? 'GUEST';
+      updateRole(role);
+      logEvent('Handshake acknowledged', {
+        role,
+        sessionId: payload?.sessionId ?? null,
+        ts,
+        rid,
+      });
+      break;
+    }
+    case 'core.pong': {
+      const started = pendingPings.get(rid);
+      pendingPings.delete(rid);
+      const latency = started !== undefined ? (performance.now() - started).toFixed(1) : null;
+      logEvent('Pong received', {
+        rid,
+        latency: latency ? `${latency} ms` : 'n/a',
+        payloadTs: payload?.ts,
+        ts,
+      });
+      break;
+    }
+    default:
+      logEvent(`Received envelope: ${type}`, envelope);
+  }
+});
+
+pingButton.addEventListener('click', () => {
+  if (!socket.connected) return;
   const rid = createRid();
   const started = performance.now();
   pendingPings.set(rid, started);
+
   const envelope = {
     type: 'core.ping',
     rid,
     ts: Date.now(),
-    payload: {
-      origin: 'frontend',
-    },
+    payload: { origin: 'frontend' },
   };
   socket.emit('message', envelope);
   logEvent('Ping sent', { rid });
-}
+});
 
-let socket;
-
-try {
-  socket = window.io();
-} catch (error) {
-  logEvent('Failed to initialize Socket.IO client', error?.message ?? error);
-}
-
-if (socket) {
-  socket.on('connect', () => {
-    setStatus('ONLINE');
-    logEvent('Connected to ShrineVTT server');
-    sendHandshake(socket);
-  });
-
-  socket.on('disconnect', (reason) => {
-    setStatus('OFFLINE');
-    logEvent(`Disconnected: ${reason}`);
-    updateRole('GUEST');
-    pendingPings.clear();
-  });
-
-  socket.on('connect_error', (error) => {
-    setStatus('OFFLINE');
-    logEvent('Connection error', error?.message ?? error);
-  });
-
-  socket.on('message', (envelope) => {
-    if (!envelope || typeof envelope !== 'object') {
-      logEvent('Received malformed envelope');
-      return;
-    }
-
-    const { type, rid, payload, ts } = envelope;
-    switch (type) {
-      case 'core.handshake:out': {
-        const role = payload?.role ?? 'GUEST';
-        updateRole(role);
-        logEvent('Handshake acknowledged', { role, sessionId: payload?.sessionId, ts, rid });
-        break;
-      }
-      case 'core.pong': {
-        const started = pendingPings.get(rid);
-        pendingPings.delete(rid);
-        const latency = started !== undefined ? (performance.now() - started).toFixed(1) : null;
-        logEvent('Pong received', {
-          rid,
-          latency: latency ? `${latency} ms` : 'n/a',
-          payloadTs: payload?.ts,
-          ts,
-        });
-        break;
-      }
-      default: {
-        logEvent(`Received envelope: ${type}`, envelope);
-      }
-    }
-  });
-
-  pingButton.addEventListener('click', () => {
-    if (socket.connected) {
-      sendPing(socket);
-    }
-  });
-} else {
-  setStatus('OFFLINE');
-}
+// Initial UI
+setStatus('OFFLINE');

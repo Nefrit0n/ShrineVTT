@@ -21,6 +21,5 @@ export default function createWsServer(httpServer, { logger = log, jwt } = {}) {
   registerCommandHandlers(namespace, { logger });
 
   logger.info({ namespace: WS_NAMESPACE }, 'WS namespace initialized');
-
   return io;
 }

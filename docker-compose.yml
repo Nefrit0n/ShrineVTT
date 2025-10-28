@@ -1,45 +1,20 @@
 services:
   shrinevtt:
     container_name: shrinevtt
-    build:
-      context: .
+    build: .
     restart: unless-stopped
-
-    # Healthcheck для корректного мониторинга состояния
-    healthcheck:
-      test: [ "CMD", "wget", "-qO-", "http://localhost:8080/health" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
-    # Ограничения ресурсов
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
-
     ports:
-      - target: 8080
-        published: 8080
-        protocol: tcp
-        mode: host
+      - "8080:8080"
 
-    # Удобное управление данными
     volumes:
       - data:/app/data
 
-    # Настройки окружения (пример)
     environment:
-      NODE_ENV: production
-      PORT: 8080
-
-    # Логи не захламляют диски
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+      NODE_ENV: "production"
+      DATA_DIR: "/app/data"
+      JWT_SECRET: "dev-only-change-me"
+      GM_PASSWORD: "123456"
+      PORT: "8080"
 
 volumes:
   data:

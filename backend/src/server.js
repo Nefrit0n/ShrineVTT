@@ -1,5 +1,4 @@
 import 'dotenv/config';
-
 import config from './config.js';
 import createApp from './http/app.js';
 import log from './log.js';
@@ -7,6 +6,13 @@ import createWsServer from './ws/index.js';
 import db from './infra/db/sqlite.js';
 import UserRepository, { seedTestUsers } from './infra/repositories/UserRepository.js';
 import * as jwt from './auth/jwt.js';
+
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET not set in environment');
+}
+if (!process.env.GM_PASSWORD) {
+  log.warn('GM_PASSWORD not set: GM login will fail');
+}
 
 const userRepository = new UserRepository(db);
 seedTestUsers(userRepository, { logger: log });
