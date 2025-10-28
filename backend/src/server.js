@@ -5,6 +5,7 @@ import log from './log.js';
 import createWsServer from './ws/index.js';
 import db from './infra/db/sqlite.js';
 import UserRepository, { seedTestUsers } from './infra/repositories/UserRepository.js';
+import SessionRepository from './infra/repositories/SessionRepository.js';
 import * as jwt from './auth/jwt.js';
 
 if (!process.env.JWT_SECRET) {
@@ -15,9 +16,10 @@ if (!process.env.GM_PASSWORD) {
 }
 
 const userRepository = new UserRepository(db);
+const sessionRepository = new SessionRepository(db);
 seedTestUsers(userRepository, { logger: log });
 
-const app = createApp({ logger: log, userRepository, jwt });
+const app = createApp({ logger: log, userRepository, sessionRepository, jwt });
 
 const server = app.listen(config.port, () => {
   log.info({ port: config.port }, 'Server listening');
