@@ -28,7 +28,19 @@ export function createApp({
 }) {
   const app = express();
 
-  app.use(helmet());
+  const defaultCspDirectives = helmet.contentSecurityPolicy.getDefaultDirectives();
+  const scriptSrc = defaultCspDirectives['script-src'] || ["'self'"];
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          ...defaultCspDirectives,
+          'script-src': [...scriptSrc, 'https://cdn.jsdelivr.net'],
+        },
+      },
+    }),
+  );
   app.use(cors({ origin: '*' })); // Упрощённый CORS для MVP
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
@@ -64,6 +76,10 @@ export function createApp({
     }),
   );
   app.use('/api', readmeRouter);
+
+  app.get('/favicon.ico', (req, res) => {
+    res.status(204).end();
+  });
 
   app.use(express.static(staticDir));
 
