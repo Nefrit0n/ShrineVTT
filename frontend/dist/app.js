@@ -3,12 +3,9 @@ const roleEl = document.getElementById('role-indicator');
 const pingButton = document.getElementById('ping-button');
 const logContainer = document.getElementById('log-entries');
 const canvas = document.getElementById('scene-canvas');
-const sessionCodeEl = document.getElementById('session-code');
-const disconnectBtn = document.getElementById('disconnect-btn');
 const ctx = canvas.getContext('2d');
 
-const controlSections = document.querySelectorAll('#control-panel [data-role]');
-
+// Modal helpers
 function modal(el) {
   return {
     open: () => el.setAttribute('data-open', 'true'),
@@ -20,6 +17,7 @@ function modal(el) {
 const gmModal = modal(document.getElementById('modal-gm'));
 const joinModal = modal(document.getElementById('modal-join'));
 
+// Close by backdrop or ✕
 document.querySelectorAll('[data-close]').forEach((n) =>
   n.addEventListener('click', () => {
     gmModal.close();
@@ -30,17 +28,6 @@ document.querySelectorAll('[data-close]').forEach((n) =>
 const STATUS_CLASSES = {
   ONLINE: 'pill--ok',
   OFFLINE: 'pill--danger',
-};
-
-const STATUS_LABELS = {
-  ONLINE: 'Онлайн',
-  OFFLINE: 'Офлайн',
-};
-
-const ROLE_LABELS = {
-  MASTER: 'Ведущий',
-  PLAYER: 'Игрок',
-  GUEST: 'Гость',
 };
 
 function logEvent(message, details) {
@@ -69,35 +56,15 @@ function logEvent(message, details) {
 }
 
 function setStatus(status) {
-  const normalized = status === 'ONLINE' ? 'ONLINE' : 'OFFLINE';
-  statusEl.textContent = STATUS_LABELS[normalized];
+  statusEl.textContent = status;
   statusEl.classList.remove(STATUS_CLASSES.ONLINE, STATUS_CLASSES.OFFLINE);
-  statusEl.classList.add(STATUS_CLASSES[normalized]);
-  if (normalized === 'ONLINE') {
-    pingButton?.removeAttribute('disabled');
-    disconnectBtn.removeAttribute('disabled');
-  } else {
-    pingButton?.setAttribute('disabled', '');
-    disconnectBtn.setAttribute('disabled', '');
-  }
-}
-
-function applyRoleUI(role) {
-  const normalized = (role ?? 'GUEST').toUpperCase();
-  controlSections.forEach((section) => {
-    const target = section.dataset.role;
-    if (target === 'gm') {
-      section.hidden = normalized !== 'MASTER';
-    } else if (target === 'player') {
-      section.hidden = normalized !== 'PLAYER' && normalized !== 'MASTER';
-    }
-  });
+  statusEl.classList.add(STATUS_CLASSES[status] ?? STATUS_CLASSES.OFFLINE);
+  if (status === 'ONLINE') pingButton.removeAttribute('disabled');
+  else pingButton.setAttribute('disabled', '');
 }
 
 function updateRole(role) {
-  const normalized = (role ?? 'GUEST').toUpperCase();
-  roleEl.textContent = ROLE_LABELS[normalized] ?? ROLE_LABELS.GUEST;
-  applyRoleUI(normalized);
+  roleEl.textContent = role ?? 'GUEST';
 }
 
 function resizeCanvas() {
@@ -106,7 +73,6 @@ function resizeCanvas() {
   canvas.height = rect.height;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
-
 resizeCanvas();
 addEventListener('resize', resizeCanvas);
 
@@ -115,39 +81,7 @@ const pendingPings = new Map();
 
 let socket = window.io('/ws', { autoConnect: false });
 
-function resetSessionCode() {
-  sessionCodeEl.textContent = '—';
-  sessionCodeEl.setAttribute('disabled', '');
-  sessionCodeEl.dataset.code = '';
-}
-
-function setSessionCode(sessionId) {
-  if (sessionId) {
-    sessionCodeEl.textContent = sessionId;
-    sessionCodeEl.removeAttribute('disabled');
-    sessionCodeEl.dataset.code = sessionId;
-  } else {
-    resetSessionCode();
-  }
-}
-
-sessionCodeEl.addEventListener('click', async () => {
-  const code = sessionCodeEl.dataset.code;
-  if (!code) return;
-  try {
-    await navigator.clipboard.writeText(code);
-    sessionCodeEl.textContent = 'Скопировано!';
-    setTimeout(() => {
-      sessionCodeEl.textContent = code;
-    }, 2000);
-    logEvent('Код сессии скопирован', code);
-  } catch (error) {
-    logEvent('Не удалось скопировать код', error?.message ?? String(error));
-  }
-});
-
-// GM Login
-
+// GM Login flow (modal)
 document.getElementById('gm-login-open').addEventListener('click', () => gmModal.open());
 document.getElementById('gm-login-btn').addEventListener('click', async () => {
   const passEl = document.getElementById('gm-password');
@@ -162,7 +96,7 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
     });
 
     if (!res.ok) {
-      logEvent('Ошибка входа ведущего');
+      logEvent('GM login failed');
       return;
     }
 
@@ -172,14 +106,12 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
 
     socket.auth = { token };
     socket.connect();
-    logEvent('Запрос на запуск сессии отправлен');
   } catch (err) {
-    logEvent('Ошибка сети при входе ведущего', err?.message ?? String(err));
+    logEvent('GM login error', err?.message ?? String(err));
   }
 });
 
-// Player join
-
+// Player Join flow (modal)
 document.getElementById('join-open').addEventListener('click', () => joinModal.open());
 document.getElementById('join-session-btn').addEventListener('click', () => {
   const nickname = document.getElementById('join-nickname').value.trim();
@@ -189,25 +121,12 @@ document.getElementById('join-session-btn').addEventListener('click', () => {
   joinModal.close();
   socket.auth = { nickname, sessionId };
   socket.connect();
-  logEvent('Попытка подключения игрока', { nickname, sessionId });
-});
-
-// Disconnect manually
-disconnectBtn.addEventListener('click', () => {
-  if (!socket.connected) return;
-  logEvent('Отключение от сервера инициировано пользователем');
-  socket.disconnect();
-  socket.auth = {};
-  localStorage.removeItem('jwt');
-  updateRole('GUEST');
-  resetSessionCode();
 });
 
 const tokenFromStorage = localStorage.getItem('jwt');
 if (tokenFromStorage) {
   socket.auth = { token: tokenFromStorage };
   socket.connect();
-  logEvent('Обнаружен сохранённый токен. Автоподключение...');
 }
 
 socket.on('connect', () => {
@@ -225,25 +144,24 @@ socket.on('connect', () => {
   };
 
   socket.emit('message', envelope);
-  logEvent('Отправлено рукопожатие', envelope);
+  logEvent('Handshake sent', envelope);
 });
 
 socket.on('disconnect', (reason) => {
   setStatus('OFFLINE');
-  logEvent(`Соединение закрыто: ${reason}`);
+  logEvent(`Disconnected: ${reason}`);
   updateRole('GUEST');
   pendingPings.clear();
-  resetSessionCode();
 });
 
 socket.on('connect_error', (error) => {
   setStatus('OFFLINE');
-  logEvent('Ошибка подключения', error?.message ?? error);
+  logEvent('Connection error', error?.message ?? error);
 });
 
 socket.on('message', (envelope) => {
   if (!envelope || typeof envelope !== 'object') {
-    logEvent('Получен некорректный пакет');
+    logEvent('Received malformed envelope');
     return;
   }
 
@@ -252,9 +170,8 @@ socket.on('message', (envelope) => {
     case 'core.handshake:out': {
       const role = payload?.role ?? 'GUEST';
       updateRole(role);
-      setSessionCode(payload?.sessionId ?? null);
-      logEvent('Рукопожатие подтверждено', {
-        роль: role,
+      logEvent('Handshake acknowledged', {
+        role,
         sessionId: payload?.sessionId ?? null,
         ts,
         rid,
@@ -265,20 +182,20 @@ socket.on('message', (envelope) => {
       const started = pendingPings.get(rid);
       pendingPings.delete(rid);
       const latency = started !== undefined ? (performance.now() - started).toFixed(1) : null;
-      logEvent('Получен pong', {
+      logEvent('Pong received', {
         rid,
-        задержка: latency ? `${latency} мс` : 'n/a',
-        времяОтправки: payload?.ts,
+        latency: latency ? `${latency} ms` : 'n/a',
+        payloadTs: payload?.ts,
         ts,
       });
       break;
     }
     default:
-      logEvent(`Получено сообщение: ${type}`, envelope);
+      logEvent(`Received envelope: ${type}`, envelope);
   }
 });
 
-pingButton?.addEventListener('click', () => {
+pingButton.addEventListener('click', () => {
   if (!socket.connected) return;
   const rid = createRid();
   const started = performance.now();
@@ -291,9 +208,8 @@ pingButton?.addEventListener('click', () => {
     payload: { origin: 'frontend' },
   };
   socket.emit('message', envelope);
-  logEvent('Отправлен ping', { rid });
+  logEvent('Ping sent', { rid });
 });
 
+// Initial UI
 setStatus('OFFLINE');
-updateRole('GUEST');
-resetSessionCode();
