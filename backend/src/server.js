@@ -7,6 +7,11 @@ import db from './infra/db/sqlite.js';
 import UserRepository, { seedTestUsers } from './infra/repositories/UserRepository.js';
 import SessionRepository from './infra/repositories/SessionRepository.js';
 import PlayerStateRepository from './infra/repositories/PlayerStateRepository.js';
+import SceneRepository from './infra/repositories/SceneRepository.js';
+import TokenRepository from './infra/repositories/TokenRepository.js';
+import SessionStateRepository from './infra/repositories/SessionStateRepository.js';
+import SessionService from './application/services/SessionService.js';
+import SceneQueries from './application/queries/SceneQueries.js';
 import * as jwt from './auth/jwt.js';
 
 if (!process.env.JWT_SECRET) {
@@ -19,6 +24,18 @@ if (!process.env.GM_PASSWORD) {
 const userRepository = new UserRepository(db);
 const sessionRepository = new SessionRepository(db);
 const playerStateRepository = new PlayerStateRepository(db);
+const sceneRepository = new SceneRepository(db);
+const tokenRepository = new TokenRepository(db);
+const sessionStateRepository = new SessionStateRepository(db);
+const sessionService = new SessionService({
+  sessionRepository,
+  sceneRepository,
+  sessionStateRepository,
+});
+const sceneQueries = new SceneQueries({
+  sceneRepository,
+  tokenRepository,
+});
 seedTestUsers(userRepository, { logger: log });
 
 const app = createApp({
@@ -26,6 +43,9 @@ const app = createApp({
   userRepository,
   sessionRepository,
   playerStateRepository,
+  sceneRepository,
+  sessionService,
+  sceneQueries,
   jwt,
 });
 
