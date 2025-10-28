@@ -1,4 +1,5 @@
 import { Application, Container } from 'https://cdn.jsdelivr.net/npm/pixi.js@7.4.0/+esm';
+import 'https://cdn.jsdelivr.net/npm/@pixi/unsafe-eval@7.4.0/+esm';
 import GridLayer from './GridLayer.js';
 import MapLayer from './MapLayer.js';
 import TokensLayer from './TokensLayer.js';
