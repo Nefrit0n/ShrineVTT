@@ -4,17 +4,16 @@ import helmet from 'helmet';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createErrorHandler, notFoundHandler } from '../errors.js';
+import { createErrorHandler, notFoundHandler, HttpError } from '../errors.js';
 import healthRouter from './routes/health.js';
 import createAuthRouter from './routes/auth.js';
-import createSessionsRouter from './routes/sessions.js';
 import readmeRouter from './routes/readme.js';
 
 const staticDir = path.resolve(
   fileURLToPath(new URL('../../../frontend/dist', import.meta.url)),
 );
 
-export function createApp({ logger, userRepository, sessionRepository, jwt }) {
+export function createApp({ logger, userRepository, jwt }) {
   const app = express();
 
   app.use(helmet());
@@ -25,11 +24,9 @@ export function createApp({ logger, userRepository, sessionRepository, jwt }) {
   app.use('/health', healthRouter);
 
   if (!userRepository) throw new Error('userRepository dependency is required');
-  if (!sessionRepository) throw new Error('sessionRepository dependency is required');
   if (!jwt) throw new Error('jwt dependency is required');
 
   app.use('/api/auth', createAuthRouter({ userRepository, jwt, logger }));
-  app.use('/api/sessions', createSessionsRouter({ sessionRepository, jwt, logger }));
   app.use('/api', readmeRouter);
 
   app.use(express.static(staticDir));

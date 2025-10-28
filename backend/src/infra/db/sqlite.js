@@ -33,26 +33,6 @@ db.exec(`
     role TEXT NOT NULL CHECK (role IN ('MASTER', 'PLAYER')),
     createdAt TEXT NOT NULL DEFAULT (datetime('now'))
   );
-
-  CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY,
-    code TEXT NOT NULL UNIQUE,
-    masterUserId TEXT NOT NULL,
-    createdAt TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS session_members (
-    sessionId TEXT NOT NULL,
-    userId TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('MASTER', 'PLAYER')),
-    username TEXT NOT NULL,
-    joinedAt TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (sessionId, userId),
-    FOREIGN KEY (sessionId) REFERENCES sessions(id) ON DELETE CASCADE
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_sessions_code ON sessions (code);
-  CREATE INDEX IF NOT EXISTS idx_session_members_session_user ON session_members (sessionId, userId);
 `);
 
 export default db;

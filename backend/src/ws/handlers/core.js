@@ -1,7 +1,5 @@
 import log from '../../log.js';
 
-const SERVER_NAME = 'shrinevtt';
-
 export default function registerCoreHandlers(namespace, { logger = log }) {
   namespace.on('connection', (socket) => {
     logger.info(
@@ -18,13 +16,14 @@ export default function registerCoreHandlers(namespace, { logger = log }) {
 
       switch (type) {
         case 'core.handshake:in': {
+          // Ответ серверного handshake
           const outEnvelope = {
             type: 'core.handshake:out',
             rid,
             ts: Date.now(),
             payload: {
-              server: SERVER_NAME,
               role: socket.data.role,
+              username: socket.data.username,
               sessionId: socket.data.sessionId,
             },
           };
@@ -32,7 +31,7 @@ export default function registerCoreHandlers(namespace, { logger = log }) {
           socket.emit('message', outEnvelope);
           logger.info(
             { role: socket.data.role, sessionId: socket.data.sessionId },
-            'Handshake completed',
+            'Handshake completed'
           );
           break;
         }
