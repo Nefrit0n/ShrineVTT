@@ -13,23 +13,23 @@ export default class PixiStage {
       throw new Error('Canvas element is required to initialise PixiStage');
     }
 
-    const app = new Application();
-    await app.init({
+    const app = new Application({
       view: canvas,
       background,
       antialias: true,
       autoDensity: true,
       resolution: window.devicePixelRatio || 1,
       eventMode: 'passive',
-      resizeTo: canvas.parentElement ?? window,
     });
+
+    app.resizeTo = canvas.parentElement ?? window;
 
     return new PixiStage({ app, canvas });
   }
 
   constructor({ app, canvas }) {
     this.app = app;
-    this.canvas = canvas || app.canvas || app.renderer.view;
+    this.canvas = canvas || app.view || app.renderer.view;
     this.container = new Container();
     this.container.eventMode = 'static';
     this.container.cursor = 'grab';
@@ -83,6 +83,9 @@ export default class PixiStage {
     window.removeEventListener('pointerleave', this.handlePointerUp);
     this.canvas.removeEventListener('wheel', this.handleWheel);
     window.removeEventListener('resize', this.handleResize);
+    if (this.app) {
+      this.app.resizeTo = null;
+    }
     this.app.destroy();
   }
 
