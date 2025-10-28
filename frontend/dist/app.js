@@ -23,6 +23,18 @@ const sessionSavesModalEl = document.getElementById('modal-session-saves');
 const sessionSavesList = document.getElementById('session-saves-list');
 const sessionSavesEmpty = document.getElementById('session-saves-empty');
 const sessionLoadConfirmBtn = document.getElementById('session-load-confirm');
+const createSceneForm = document.getElementById('create-scene-form');
+const createSceneSubmitBtn = document.getElementById('create-scene-submit');
+const createSceneStatus = document.getElementById('scene-form-status');
+const createSceneResult = document.getElementById('scene-form-result');
+const createSceneResultName = document.getElementById('scene-form-result-name');
+const createSceneResultText = document.getElementById('scene-form-result-text');
+const createSceneResultBadge = document.getElementById('scene-form-result-badge');
+const makeActiveSceneBtn = document.getElementById('scene-form-make-active');
+const sceneNameInput = document.getElementById('scene-name-input');
+const sceneGridInput = document.getElementById('scene-grid-input');
+const sceneWidthInput = document.getElementById('scene-width-input');
+const sceneHeightInput = document.getElementById('scene-height-input');
 
 const JOURNAL_SAVE_DEBOUNCE = 800;
 const JOURNAL_STATUS_CLASSES = [
@@ -46,6 +58,15 @@ const sessionSavesState = {
   sessions: [],
   selectedId: null,
   isLoading: false,
+};
+
+const sceneFormState = {
+  lastSceneId: null,
+  lastSceneName: '',
+  activeSceneId: null,
+  isSubmitting: false,
+  isActivating: false,
+  statusVariant: 'idle',
 };
 
 const STORAGE_KEYS = Object.freeze({
@@ -127,6 +148,97 @@ function logEvent(message, details) {
 
   logContainer.appendChild(entry);
   logContainer.scrollTo({ top: logContainer.scrollHeight, behavior: 'smooth' });
+}
+
+function setSceneFormStatus(message, variant = 'idle') {
+  if (!createSceneStatus) return;
+  if (typeof message === 'string') {
+    createSceneStatus.textContent = message;
+  }
+
+  createSceneStatus.classList.remove('scene-form__status--error', 'scene-form__status--success');
+  if (variant === 'error') {
+    createSceneStatus.classList.add('scene-form__status--error');
+  } else if (variant === 'success') {
+    createSceneStatus.classList.add('scene-form__status--success');
+  }
+
+  sceneFormState.statusVariant = variant;
+}
+
+function resetSceneFormResult() {
+  sceneFormState.lastSceneId = null;
+  sceneFormState.lastSceneName = '';
+  sceneFormState.activeSceneId = null;
+  if (createSceneResult) {
+    createSceneResult.setAttribute('hidden', '');
+  }
+  if (createSceneResultName) {
+    createSceneResultName.textContent = '';
+  }
+  if (createSceneResultText) {
+    createSceneResultText.textContent = '';
+  }
+  createSceneResultBadge?.setAttribute('hidden', '');
+  syncSceneResultControls();
+}
+
+function syncSceneResultControls() {
+  if (createSceneResult) {
+    if (sceneFormState.lastSceneId) createSceneResult.removeAttribute('hidden');
+    else createSceneResult.setAttribute('hidden', '');
+  }
+
+  const isActive = Boolean(
+    sceneFormState.lastSceneId && sceneFormState.activeSceneId === sceneFormState.lastSceneId,
+  );
+
+  if (createSceneResultBadge) {
+    if (isActive) createSceneResultBadge.removeAttribute('hidden');
+    else createSceneResultBadge.setAttribute('hidden', '');
+  }
+
+  if (makeActiveSceneBtn) {
+    const disabled =
+      !sceneFormState.lastSceneId ||
+      sceneFormState.isActivating ||
+      isActive ||
+      currentRole !== 'MASTER' ||
+      !currentSessionId ||
+      !isConnected;
+    makeActiveSceneBtn.toggleAttribute('disabled', disabled);
+  }
+}
+
+function updateSceneFormAccess() {
+  const isMaster = currentRole === 'MASTER';
+  const hasSession = Boolean(currentSessionId);
+  const connected = isConnected;
+  const disableInputs =
+    !isMaster || !hasSession || !connected || sceneFormState.isSubmitting || sceneFormState.isActivating;
+
+  [sceneNameInput, sceneGridInput, sceneWidthInput, sceneHeightInput].forEach((input) => {
+    if (!input) return;
+    if (disableInputs) input.setAttribute('disabled', '');
+    else input.removeAttribute('disabled');
+  });
+
+  if (createSceneSubmitBtn) {
+    if (disableInputs) createSceneSubmitBtn.setAttribute('disabled', '');
+    else createSceneSubmitBtn.removeAttribute('disabled');
+  }
+
+  if (!isMaster) {
+    setSceneFormStatus('Доступно только Мастеру.', 'idle');
+  } else if (!hasSession) {
+    setSceneFormStatus('Создайте или загрузите сессию, чтобы подготовить сцену.', 'idle');
+  } else if (!connected) {
+    setSceneFormStatus('Ожидаем соединение с сервером...', 'idle');
+  } else if (sceneFormState.statusVariant !== 'success' && sceneFormState.statusVariant !== 'error') {
+    setSceneFormStatus('Заполните параметры и создайте новую сцену.', 'idle');
+  }
+
+  syncSceneResultControls();
 }
 
 function setJournalStatus(text, variant = 'idle') {
@@ -360,6 +472,211 @@ function handleJournalSessionChange(previousSessionId, nextSessionId) {
   }
 
   refreshJournalAccess();
+}
+
+function handleScenePanelSessionChange(previousSessionId, nextSessionId) {
+  if (previousSessionId !== nextSessionId) {
+    resetSceneFormResult();
+    if (nextSessionId) {
+      setSceneFormStatus('Заполните параметры и создайте новую сцену.', 'idle');
+    } else {
+      setSceneFormStatus('Создайте или загрузите сессию, чтобы подготовить сцену.', 'idle');
+    }
+  }
+
+  updateSceneFormAccess();
+}
+
+async function setActiveScene(sceneId, { silent = false } = {}) {
+  if (!sceneId) {
+    if (!silent) {
+      setSceneFormStatus('Не выбрана сцена для активации.', 'error');
+    }
+    return false;
+  }
+
+  const token = getStoredToken();
+  if (!token) {
+    if (!silent) {
+      setSceneFormStatus('Необходимо войти как Мастер.', 'error');
+    }
+    return false;
+  }
+
+  if (!currentSessionId) {
+    if (!silent) {
+      setSceneFormStatus('Создайте или загрузите сессию, чтобы подготовить сцену.', 'error');
+    }
+    return false;
+  }
+
+  const normalizedSceneId = String(sceneId);
+  sceneFormState.isActivating = true;
+  syncSceneResultControls();
+
+  try {
+    const res = await fetch(`/api/sessions/${currentSessionId}/active-scene`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ sceneId: normalizedSceneId }),
+    });
+
+    const payload = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const message =
+        payload?.error?.message ?? payload?.error ?? 'Не удалось обновить активную сцену';
+      if (!silent) {
+        setSceneFormStatus(message, 'error');
+      }
+      logEvent('Не удалось обновить активную сцену', message);
+      return false;
+    }
+
+    const activeSceneId = payload?.activeSceneId ?? null;
+    sceneFormState.activeSceneId = activeSceneId;
+    syncSceneResultControls();
+
+    if (!silent) {
+      if (activeSceneId === normalizedSceneId) {
+        setSceneFormStatus('Сцена сделана активной.', 'success');
+      } else {
+        setSceneFormStatus('Активная сцена обновлена.', 'success');
+      }
+    }
+
+    logEvent('Активная сцена обновлена', {
+      sessionId: currentSessionId,
+      sceneId: activeSceneId,
+    });
+
+    return activeSceneId === normalizedSceneId;
+  } catch (err) {
+    if (!silent) {
+      setSceneFormStatus('Не удалось обновить активную сцену', 'error');
+    }
+    logEvent('Ошибка при обновлении активной сцены', err?.message ?? String(err));
+    return false;
+  } finally {
+    sceneFormState.isActivating = false;
+    syncSceneResultControls();
+    updateSceneFormAccess();
+  }
+}
+
+async function submitSceneCreation(event) {
+  event?.preventDefault?.();
+  if (!createSceneForm || sceneFormState.isSubmitting) return;
+
+  const token = getStoredToken();
+  if (!token) {
+    setSceneFormStatus('Необходимо войти как Мастер.', 'error');
+    return;
+  }
+
+  if (!currentSessionId) {
+    setSceneFormStatus('Создайте или загрузите сессию, чтобы подготовить сцену.', 'error');
+    return;
+  }
+
+  const name = sceneNameInput?.value?.trim() ?? '';
+  if (!name) {
+    setSceneFormStatus('Введите название сцены.', 'error');
+    sceneNameInput?.focus();
+    return;
+  }
+
+  const gridSize = Number.parseInt(sceneGridInput?.value ?? '', 10);
+  const widthPx = Number.parseInt(sceneWidthInput?.value ?? '', 10);
+  const heightPx = Number.parseInt(sceneHeightInput?.value ?? '', 10);
+
+  sceneFormState.isSubmitting = true;
+  updateSceneFormAccess();
+  setSceneFormStatus('Создаём сцену...', 'idle');
+
+  try {
+    const res = await fetch(`/api/sessions/${currentSessionId}/scenes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ name, gridSize, widthPx, heightPx }),
+    });
+
+    const payload = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const message = payload?.error?.message ?? payload?.error ?? 'Не удалось создать сцену';
+      setSceneFormStatus(message, 'error');
+      logEvent('Ошибка создания сцены', message);
+      return;
+    }
+
+    const scene = payload?.scene;
+    if (!scene?.id) {
+      setSceneFormStatus('Некорректный ответ сервера', 'error');
+      logEvent('Некорректный ответ при создании сцены', payload);
+      return;
+    }
+
+    sceneFormState.lastSceneId = scene.id;
+    sceneFormState.lastSceneName = scene.name ?? 'Новая сцена';
+    if (createSceneResultName) {
+      createSceneResultName.textContent = sceneFormState.lastSceneName;
+    }
+    syncSceneResultControls();
+
+    const activated = await setActiveScene(scene.id, { silent: true });
+
+    if (activated) {
+      if (createSceneResultText) {
+        createSceneResultText.textContent = 'Сцена создана и активирована.';
+      }
+      setSceneFormStatus('Сцена создана и активирована.', 'success');
+    } else {
+      if (createSceneResultText) {
+        createSceneResultText.textContent = 'Сцена создана. Сделайте её активной, когда будете готовы.';
+      }
+      if (sceneFormState.statusVariant !== 'error') {
+        setSceneFormStatus('Сцена создана. Сделайте её активной, когда будете готовы.', 'idle');
+      }
+    }
+
+    sceneNameInput?.focus();
+    sceneNameInput?.select?.();
+    if (sceneNameInput) {
+      sceneNameInput.value = '';
+    }
+
+    logEvent('Сцена создана', {
+      sessionId: currentSessionId,
+      sceneId: scene.id,
+      name: scene.name,
+      activated: activated ? 'auto' : 'pending',
+    });
+  } catch (err) {
+    setSceneFormStatus('Не удалось создать сцену', 'error');
+    logEvent('Ошибка создания сцены', err?.message ?? String(err));
+  } finally {
+    sceneFormState.isSubmitting = false;
+    updateSceneFormAccess();
+  }
+}
+
+async function handleMakeActiveScene() {
+  if (!sceneFormState.lastSceneId) {
+    setSceneFormStatus('Нет сцены для активации.', 'error');
+    return;
+  }
+
+  const activated = await setActiveScene(sceneFormState.lastSceneId);
+  if (activated && createSceneResultText) {
+    createSceneResultText.textContent = 'Сцена готова и отмечена как активная.';
+  }
 }
 
 function resetSessionSavesState({ keepSessions = false } = {}) {
@@ -695,6 +1012,7 @@ function updateSessionControls() {
 
   sessionCopyBtn?.toggleAttribute('disabled', !hasSession);
   sessionInviteBtn?.toggleAttribute('disabled', !hasSession);
+  updateSceneFormAccess();
 }
 
 function updateSessionCode(value, { persist = true } = {}) {
@@ -727,6 +1045,7 @@ function setSessionId(value, { persist = true, syncAuth = true } = {}) {
     setSocketAuth();
   }
   handleJournalSessionChange(previousSessionId, currentSessionId);
+  handleScenePanelSessionChange(previousSessionId, currentSessionId);
 }
 
 function setStatus(status) {
@@ -754,6 +1073,8 @@ function updateRole(role) {
   if (currentRole !== 'MASTER') {
     resetSessionSavesState();
     sessionSavesModal?.close();
+    resetSceneFormResult();
+    setSceneFormStatus('Доступно только Мастеру.', 'idle');
   }
   updateSessionControls();
   syncVisibility();
@@ -1015,6 +1336,8 @@ createSessionBtn?.addEventListener('click', createSession);
 loadSessionBtn?.addEventListener('click', openSessionSavesModal);
 sessionCopyBtn?.addEventListener('click', handleCopySessionCode);
 sessionInviteBtn?.addEventListener('click', handleCopyInviteLink);
+createSceneForm?.addEventListener('submit', submitSceneCreation);
+makeActiveSceneBtn?.addEventListener('click', handleMakeActiveScene);
 leaveSessionBtn?.addEventListener('click', () => {
   leaveSession();
 });

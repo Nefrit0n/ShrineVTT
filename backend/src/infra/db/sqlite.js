@@ -75,6 +75,13 @@ db.exec(`
     FOREIGN KEY (sessionId) REFERENCES sessions(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS session_state (
+    sessionId TEXT PRIMARY KEY,
+    activeSceneId TEXT,
+    FOREIGN KEY (sessionId) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (activeSceneId) REFERENCES scenes(id) ON DELETE SET NULL
+  );
+
   CREATE TABLE IF NOT EXISTS tokens (
     id TEXT PRIMARY KEY,
     sceneId TEXT NOT NULL,

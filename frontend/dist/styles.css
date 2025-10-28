@@ -505,6 +505,72 @@ body {
   color: var(--ink-muted);
 }
 
+.scene-form {
+  display: grid;
+  gap: 12px;
+}
+
+.scene-form__row {
+  display: grid;
+  gap: 12px;
+}
+
+.scene-form__row--grid {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.scene-form__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.scene-form__status {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  min-height: 18px;
+}
+
+.scene-form__status--error {
+  color: var(--vermillion);
+}
+
+.scene-form__status--success {
+  color: var(--jade);
+}
+
+.scene-form__result {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(217, 185, 140, 0.26);
+  background: linear-gradient(180deg, rgba(18, 14, 10, 0.65), rgba(10, 8, 6, 0.7));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.scene-form__summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.scene-form__name {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.scene-form__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.scene-form__action {
+  justify-self: start;
+}
+
 .journal {
   position: relative;
   flex: 1 1 auto;
