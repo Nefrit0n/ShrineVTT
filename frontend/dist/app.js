@@ -1,9 +1,48 @@
+const body = document.body;
 const statusEl = document.getElementById('connection-status');
 const roleEl = document.getElementById('role-indicator');
+const sessionCodeEl = document.getElementById('session-code');
 const pingButton = document.getElementById('ping-button');
 const logContainer = document.getElementById('log-entries');
+const logEmptyState = document.getElementById('log-empty');
 const canvas = document.getElementById('scene-canvas');
 const ctx = canvas.getContext('2d');
+const visibilityTargets = Array.from(document.querySelectorAll('[data-visible]'));
+
+let currentRole = 'GUEST';
+let isConnected = false;
+
+body.dataset.role = currentRole.toLowerCase();
+body.dataset.connection = 'offline';
+
+function updateSessionCode(value) {
+  if (!sessionCodeEl) return;
+  const next = value ? String(value).toUpperCase() : '—';
+  sessionCodeEl.textContent = next;
+}
+
+function syncVisibility() {
+  visibilityTargets.forEach((el) => {
+    const raw = el.dataset.visible || '';
+    const tokens = raw.split(/\s+/).filter(Boolean);
+    if (!tokens.length) {
+      el.removeAttribute('hidden');
+      return;
+    }
+
+    const visible = tokens.some((token) => {
+      if (token === 'ANY') return true;
+      if (token === 'CONNECTED') return isConnected;
+      if (token === 'DISCONNECTED') return !isConnected;
+      return currentRole === token;
+    });
+
+    if (visible) el.removeAttribute('hidden');
+    else el.setAttribute('hidden', '');
+  });
+}
+
+syncVisibility();
 
 // Modal helpers
 function modal(el) {
@@ -30,9 +69,24 @@ const STATUS_CLASSES = {
   OFFLINE: 'pill--danger',
 };
 
+const STATUS_LABELS = {
+  ONLINE: 'В СЕТИ',
+  OFFLINE: 'НЕ В СЕТИ',
+};
+
+const ROLE_LABELS = {
+  MASTER: 'МАСТЕР',
+  PLAYER: 'ИГРОК',
+  GUEST: 'ГОСТЬ',
+};
+
 function logEvent(message, details) {
   const entry = document.createElement('article');
   entry.className = 'log-entry';
+
+  if (logEmptyState) {
+    logEmptyState.setAttribute('hidden', '');
+  }
 
   const time = document.createElement('div');
   time.className = 'log-entry__time';
@@ -56,15 +110,28 @@ function logEvent(message, details) {
 }
 
 function setStatus(status) {
-  statusEl.textContent = status;
+  const label = STATUS_LABELS[status] ?? STATUS_LABELS.OFFLINE;
+  statusEl.textContent = label;
   statusEl.classList.remove(STATUS_CLASSES.ONLINE, STATUS_CLASSES.OFFLINE);
   statusEl.classList.add(STATUS_CLASSES[status] ?? STATUS_CLASSES.OFFLINE);
-  if (status === 'ONLINE') pingButton.removeAttribute('disabled');
-  else pingButton.setAttribute('disabled', '');
+  isConnected = status === 'ONLINE';
+  body.dataset.connection = isConnected ? 'online' : 'offline';
+  if (status === 'ONLINE') {
+    pingButton?.removeAttribute('disabled');
+  } else {
+    pingButton?.setAttribute('disabled', '');
+    updateSessionCode(null);
+  }
+  syncVisibility();
 }
 
 function updateRole(role) {
-  roleEl.textContent = role ?? 'GUEST';
+  const normalized = typeof role === 'string' ? role.toUpperCase() : 'GUEST';
+  const label = ROLE_LABELS[normalized] ?? ROLE_LABELS.GUEST;
+  roleEl.textContent = label;
+  currentRole = normalized in ROLE_LABELS ? normalized : 'GUEST';
+  body.dataset.role = currentRole.toLowerCase();
+  syncVisibility();
 }
 
 function resizeCanvas() {
@@ -96,7 +163,7 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
     });
 
     if (!res.ok) {
-      logEvent('GM login failed');
+      logEvent('Не удалось войти как Мастер');
       return;
     }
 
@@ -107,7 +174,7 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
     socket.auth = { token };
     socket.connect();
   } catch (err) {
-    logEvent('GM login error', err?.message ?? String(err));
+    logEvent('Ошибка входа Мастера', err?.message ?? String(err));
   }
 });
 
@@ -144,24 +211,24 @@ socket.on('connect', () => {
   };
 
   socket.emit('message', envelope);
-  logEvent('Handshake sent', envelope);
+  logEvent('Рукопожатие отправлено', envelope);
 });
 
 socket.on('disconnect', (reason) => {
   setStatus('OFFLINE');
-  logEvent(`Disconnected: ${reason}`);
+  logEvent(`Отключено: ${reason}`);
   updateRole('GUEST');
   pendingPings.clear();
 });
 
 socket.on('connect_error', (error) => {
   setStatus('OFFLINE');
-  logEvent('Connection error', error?.message ?? error);
+  logEvent('Ошибка соединения', error?.message ?? error);
 });
 
 socket.on('message', (envelope) => {
   if (!envelope || typeof envelope !== 'object') {
-    logEvent('Received malformed envelope');
+    logEvent('Получен повреждённый конверт');
     return;
   }
 
@@ -170,7 +237,8 @@ socket.on('message', (envelope) => {
     case 'core.handshake:out': {
       const role = payload?.role ?? 'GUEST';
       updateRole(role);
-      logEvent('Handshake acknowledged', {
+      updateSessionCode(payload?.sessionId ?? null);
+      logEvent('Рукопожатие подтверждено', {
         role,
         sessionId: payload?.sessionId ?? null,
         ts,
@@ -182,16 +250,16 @@ socket.on('message', (envelope) => {
       const started = pendingPings.get(rid);
       pendingPings.delete(rid);
       const latency = started !== undefined ? (performance.now() - started).toFixed(1) : null;
-      logEvent('Pong received', {
+      logEvent('Получен отклик', {
         rid,
-        latency: latency ? `${latency} ms` : 'n/a',
+        latency: latency ? `${latency} ms` : 'н/д',
         payloadTs: payload?.ts,
         ts,
       });
       break;
     }
     default:
-      logEvent(`Received envelope: ${type}`, envelope);
+      logEvent(`Получен конверт: ${type}`, envelope);
   }
 });
 
@@ -208,7 +276,7 @@ pingButton.addEventListener('click', () => {
     payload: { origin: 'frontend' },
   };
   socket.emit('message', envelope);
-  logEvent('Ping sent', { rid });
+  logEvent('Пинг отправлен', { rid });
 });
 
 // Initial UI
