@@ -14,6 +14,14 @@
  * @property {string} createdAt
  */
 
+/**
+ * @typedef {Object} SessionIdentity
+ * @property {string} id
+ * @property {string} username
+ * @property {SessionRole} role
+ * @property {string | null | undefined} [sessionId]
+ */
+
 export const USER_ROLES = Object.freeze({
   MASTER: 'MASTER',
   PLAYER: 'PLAYER',
