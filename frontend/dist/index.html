@@ -28,26 +28,32 @@
         </div>
       </div>
 
-      <div class="status">
-        <div class="status__item status__item--connection">
-          <span class="status__icon" aria-hidden="true">☯︎</span>
-          <div class="status__stack">
-            <span class="label">Соединение</span>
-            <span id="connection-status" class="pill pill--danger" title="Состояние WebSocket">НЕ В СЕТИ</span>
+      <div class="topbar__panel">
+        <div class="status">
+          <div class="status__item status__item--connection">
+            <span class="status__icon" aria-hidden="true">☯︎</span>
+            <div class="status__stack">
+              <span class="label">Соединение</span>
+              <span id="connection-status" class="pill pill--danger" title="Состояние WebSocket">НЕ В СЕТИ</span>
+            </div>
+          </div>
+          <div class="status__item status__item--role">
+            <span class="status__icon" aria-hidden="true">狐</span>
+            <div class="status__stack">
+              <span class="label">Роль</span>
+              <span id="role-indicator" class="pill">ГОСТЬ</span>
+            </div>
           </div>
         </div>
-        <div class="status__item status__item--role">
-          <span class="status__icon" aria-hidden="true">狐</span>
-          <div class="status__stack">
-            <span class="label">Роль</span>
-            <span id="role-indicator" class="pill">ГОСТЬ</span>
-          </div>
-        </div>
-        <div class="status__item status__item--session" data-visible="CONNECTED MASTER PLAYER" hidden>
-          <span class="status__icon" aria-hidden="true">印</span>
-          <div class="status__stack">
-            <span class="label">Код сессии</span>
-            <span id="session-code" class="pill pill--muted">—</span>
+        <div class="session-controls">
+          <button id="create-session-btn" class="btn btn--primary session-controls__action" type="button" hidden>
+            Создать сессию
+          </button>
+          <div id="session-chip" class="session-chip" hidden>
+            <span class="session-chip__label">Код</span>
+            <span id="session-code" class="session-chip__code">—</span>
+            <button id="session-copy-btn" class="session-chip__action" type="button">Копировать</button>
+            <button id="session-invite-btn" class="session-chip__action" type="button">Ссылка-приглашение</button>
           </div>
         </div>
       </div>
@@ -196,19 +202,22 @@
         </div>
         <button class="modal__close" title="Закрыть" data-close aria-label="Закрыть">✕</button>
       </header>
-      <div class="modal__body modal__body--grid">
+      <form id="join-form" class="modal__body modal__body--grid" autocomplete="off">
         <label class="field">
           <span class="field__label">Имя игрока</span>
-          <input id="join-nickname" class="field__input" type="text" placeholder="например, Лунный лис" maxlength="32" />
+          <input id="join-username" name="username" class="field__input" type="text"
+            placeholder="например, Лунный лис" maxlength="32" required />
         </label>
         <label class="field">
           <span class="field__label">Код сессии</span>
-          <input id="join-session" class="field__input" type="text" placeholder="например, ABR7" maxlength="24" />
+          <input id="join-code" name="code" class="field__input" type="text" placeholder="например, A7R9QZ" maxlength="6"
+            inputmode="text" pattern="[A-Za-z0-9]{6}" required />
         </label>
-      </div>
+        <p id="join-error" class="form-error" data-join-error hidden></p>
+      </form>
       <footer class="modal__footer">
-        <button class="btn btn--ghost" data-close>Отмена</button>
-        <button id="join-session-btn" class="btn btn--primary">Присоединиться</button>
+        <button class="btn btn--ghost" type="button" data-close>Отмена</button>
+        <button id="join-submit" class="btn btn--primary" type="submit" form="join-form">Присоединиться</button>
       </footer>
     </div>
   </div>

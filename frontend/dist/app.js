@@ -1,7 +1,13 @@
+import { createJoinModal } from './ui/join.js';
+
 const body = document.body;
 const statusEl = document.getElementById('connection-status');
 const roleEl = document.getElementById('role-indicator');
 const sessionCodeEl = document.getElementById('session-code');
+const sessionChipEl = document.getElementById('session-chip');
+const createSessionBtn = document.getElementById('create-session-btn');
+const sessionCopyBtn = document.getElementById('session-copy-btn');
+const sessionInviteBtn = document.getElementById('session-invite-btn');
 const pingButton = document.getElementById('ping-button');
 const logContainer = document.getElementById('log-entries');
 const logEmptyState = document.getElementById('log-empty');
@@ -9,17 +15,36 @@ const canvas = document.getElementById('scene-canvas');
 const ctx = canvas.getContext('2d');
 const visibilityTargets = Array.from(document.querySelectorAll('[data-visible]'));
 
+const STORAGE_KEYS = Object.freeze({
+  TOKEN: 'jwt',
+  SESSION_ID: 'sessionId',
+  SESSION_CODE: 'sessionCode',
+});
+
+const STATUS_CLASSES = Object.freeze({
+  ONLINE: 'pill--ok',
+  OFFLINE: 'pill--danger',
+});
+
+const STATUS_LABELS = Object.freeze({
+  ONLINE: 'В СЕТИ',
+  OFFLINE: 'НЕ В СЕТИ',
+});
+
+const ROLE_LABELS = Object.freeze({
+  MASTER: 'МАСТЕР',
+  PLAYER: 'ИГРОК',
+  GUEST: 'ГОСТЬ',
+});
+
 let currentRole = 'GUEST';
 let isConnected = false;
+let currentSessionId = null;
+let currentSessionCode = null;
+let socket = null;
 
 body.dataset.role = currentRole.toLowerCase();
 body.dataset.connection = 'offline';
-
-function updateSessionCode(value) {
-  if (!sessionCodeEl) return;
-  const next = value ? String(value).toUpperCase() : '—';
-  sessionCodeEl.textContent = next;
-}
 
 function syncVisibility() {
   visibilityTargets.forEach((el) => {
@@ -42,44 +67,6 @@ function syncVisibility() {
   });
 }
 
-syncVisibility();
-
-// Modal helpers
-function modal(el) {
-  return {
-    open: () => el.setAttribute('data-open', 'true'),
-    close: () => el.removeAttribute('data-open'),
-    el,
-  };
-}
-
-const gmModal = modal(document.getElementById('modal-gm'));
-const joinModal = modal(document.getElementById('modal-join'));
-
-// Close by backdrop or ✕
-document.querySelectorAll('[data-close]').forEach((n) =>
-  n.addEventListener('click', () => {
-    gmModal.close();
-    joinModal.close();
-  }),
-);
-
-const STATUS_CLASSES = {
-  ONLINE: 'pill--ok',
-  OFFLINE: 'pill--danger',
-};
-
-const STATUS_LABELS = {
-  ONLINE: 'В СЕТИ',
-  OFFLINE: 'НЕ В СЕТИ',
-};
-
-const ROLE_LABELS = {
-  MASTER: 'МАСТЕР',
-  PLAYER: 'ИГРОК',
-  GUEST: 'ГОСТЬ',
-};
-
 function logEvent(message, details) {
   const entry = document.createElement('article');
   entry.className = 'log-entry';
@@ -93,10 +80,10 @@ function logEvent(message, details) {
   time.textContent = new Date().toLocaleTimeString();
   entry.appendChild(time);
 
-  const body = document.createElement('div');
-  body.className = 'log-entry__message';
-  body.textContent = message;
-  entry.appendChild(body);
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'log-entry__message';
+  bodyEl.textContent = message;
+  entry.appendChild(bodyEl);
 
   if (details !== undefined) {
     const pre = document.createElement('pre');
@@ -107,6 +94,74 @@ function logEvent(message, details) {
 
   logContainer.appendChild(entry);
   logContainer.scrollTo({ top: logContainer.scrollHeight, behavior: 'smooth' });
+}
+
+function getStoredToken() {
+  return localStorage.getItem(STORAGE_KEYS.TOKEN);
+}
+
+function setSocketAuth(extra = {}) {
+  if (!socket) return;
+  const token = getStoredToken();
+  const authPayload = { ...extra };
+
+  if (token) {
+    authPayload.token = token;
+  }
+  if (currentSessionId) {
+    authPayload.sessionId = currentSessionId;
+  }
+
+  socket.auth = authPayload;
+}
+
+function updateSessionControls() {
+  const hasSession = Boolean(currentSessionId && currentSessionCode);
+
+  if (sessionChipEl) {
+    if (hasSession) sessionChipEl.removeAttribute('hidden');
+    else sessionChipEl.setAttribute('hidden', '');
+  }
+
+  if (createSessionBtn) {
+    const shouldShowCreate = currentRole === 'MASTER' && isConnected && !currentSessionId;
+    if (shouldShowCreate) createSessionBtn.removeAttribute('hidden');
+    else createSessionBtn.setAttribute('hidden', '');
+    createSessionBtn.toggleAttribute('disabled', !isConnected);
+  }
+
+  sessionCopyBtn?.toggleAttribute('disabled', !hasSession);
+  sessionInviteBtn?.toggleAttribute('disabled', !hasSession);
+}
+
+function updateSessionCode(value, { persist = true } = {}) {
+  currentSessionCode = value ? String(value).toUpperCase() : null;
+  if (sessionCodeEl) {
+    sessionCodeEl.textContent = currentSessionCode ?? '—';
+  }
+  if (persist) {
+    if (currentSessionCode) {
+      localStorage.setItem(STORAGE_KEYS.SESSION_CODE, currentSessionCode);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.SESSION_CODE);
+    }
+  }
+  updateSessionControls();
+}
+
+function setSessionId(value, { persist = true, syncAuth = true } = {}) {
+  currentSessionId = value && typeof value === 'string' ? value : null;
+  if (persist) {
+    if (currentSessionId) {
+      localStorage.setItem(STORAGE_KEYS.SESSION_ID, currentSessionId);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.SESSION_ID);
+    }
+  }
+  updateSessionControls();
+  if (syncAuth) {
+    setSocketAuth();
+  }
 }
 
 function setStatus(status) {
@@ -120,8 +175,8 @@ function setStatus(status) {
     pingButton?.removeAttribute('disabled');
   } else {
     pingButton?.setAttribute('disabled', '');
-    updateSessionCode(null);
   }
+  updateSessionControls();
   syncVisibility();
 }
 
@@ -131,6 +186,7 @@ function updateRole(role) {
   roleEl.textContent = label;
   currentRole = normalized in ROLE_LABELS ? normalized : 'GUEST';
   body.dataset.role = currentRole.toLowerCase();
+  updateSessionControls();
   syncVisibility();
 }
 
@@ -140,17 +196,173 @@ function resizeCanvas() {
   canvas.height = rect.height;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
+
 resizeCanvas();
 addEventListener('resize', resizeCanvas);
 
 const createRid = () => (crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 const pendingPings = new Map();
 
-let socket = window.io('/ws', { autoConnect: false });
+function sendHandshake({ sessionId } = {}) {
+  if (!socket || !socket.connected) return;
+  const envelope = {
+    type: 'core.handshake:in',
+    rid: createRid(),
+    ts: Date.now(),
+    payload: {
+      role: currentRole,
+      sessionId: sessionId ?? currentSessionId ?? null,
+    },
+  };
+  socket.emit('message', envelope);
+  logEvent('Рукопожатие отправлено', envelope);
+}
 
-// GM Login flow (modal)
-document.getElementById('gm-login-open').addEventListener('click', () => gmModal.open());
-document.getElementById('gm-login-btn').addEventListener('click', async () => {
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const area = document.createElement('textarea');
+  area.value = value;
+  area.setAttribute('readonly', '');
+  area.style.position = 'fixed';
+  area.style.left = '-9999px';
+  document.body.appendChild(area);
+  area.select();
+  document.execCommand('copy');
+  document.body.removeChild(area);
+}
+
+async function handleCopySessionCode() {
+  if (!currentSessionCode) return;
+  try {
+    await copyText(currentSessionCode);
+    logEvent('Код сессии скопирован', currentSessionCode);
+  } catch (err) {
+    logEvent('Не удалось скопировать код сессии', err?.message ?? String(err));
+  }
+}
+
+async function handleCopyInviteLink() {
+  if (!currentSessionCode) return;
+  try {
+    const inviteUrl = new URL(window.location.href);
+    inviteUrl.searchParams.set('code', currentSessionCode);
+    await copyText(inviteUrl.toString());
+    logEvent('Ссылка-приглашение скопирована', inviteUrl.toString());
+  } catch (err) {
+    logEvent('Не удалось скопировать ссылку-приглашение', err?.message ?? String(err));
+  }
+}
+
+async function createSession() {
+  const token = getStoredToken();
+  if (!token) {
+    logEvent('Необходимо войти как Мастер, чтобы создать сессию');
+    return;
+  }
+  if (!createSessionBtn) return;
+
+  createSessionBtn.setAttribute('disabled', '');
+  try {
+    const res = await fetch('/api/sessions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const message = data?.error ?? 'Не удалось создать сессию';
+      logEvent('Ошибка создания сессии', message);
+      return;
+    }
+
+    const payload = await res.json();
+    if (!payload?.sessionId || !payload?.code) {
+      logEvent('Некорректный ответ сервера при создании сессии');
+      return;
+    }
+
+    setSessionId(payload.sessionId);
+    updateSessionCode(payload.code);
+    setSocketAuth();
+    sendHandshake({ sessionId: payload.sessionId });
+    logEvent('Сессия создана', { sessionId: payload.sessionId, code: payload.code });
+  } catch (err) {
+    logEvent('Ошибка создания сессии', err?.message ?? String(err));
+  } finally {
+    createSessionBtn.removeAttribute('disabled');
+    updateSessionControls();
+  }
+}
+
+function openJoin() {
+  const fallbackCode = currentSessionCode || localStorage.getItem(STORAGE_KEYS.SESSION_CODE) || '';
+  joinModal.setValues({ code: fallbackCode });
+  joinModal.open();
+}
+
+async function submitJoin(formData, helpers) {
+  const { username, code } = formData;
+
+  if (!username) {
+    helpers.showError('Введите имя игрока');
+    return;
+  }
+
+  if (!code || code.length !== 6) {
+    helpers.showError('Введите код из 6 символов');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/sessions/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, code }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const message = data?.error ?? 'Не удалось подключиться к сессии';
+      helpers.showError(message);
+      logEvent('Ошибка подключения к сессии', message);
+      return;
+    }
+
+    const payload = await res.json();
+    if (!payload?.token || !payload?.sessionId) {
+      helpers.showError('Некорректный ответ сервера');
+      logEvent('Некорректный ответ при подключении к сессии');
+      return;
+    }
+
+    localStorage.setItem(STORAGE_KEYS.TOKEN, payload.token);
+    setSessionId(payload.sessionId);
+    updateSessionCode(code);
+    helpers.close();
+    helpers.reset();
+    setSocketAuth();
+
+    if (socket.connected) {
+      sendHandshake({ sessionId: payload.sessionId });
+    } else {
+      socket.connect();
+    }
+
+    logEvent('Игрок подключён к сессии', { username, sessionId: payload.sessionId });
+  } catch (err) {
+    helpers.showError('Не удалось подключиться. Попробуйте ещё раз.');
+    logEvent('Ошибка подключения игрока', err?.message ?? String(err));
+  }
+}
+
+async function handleGmLogin() {
   const passEl = document.getElementById('gm-password');
   const password = passEl.value.trim();
   if (!password) return;
@@ -167,51 +379,106 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
       return;
     }
 
-    const { token } = await res.json();
-    localStorage.setItem('jwt', token);
-    gmModal.close();
+    const payload = await res.json();
+    if (!payload?.token) {
+      logEvent('Некорректный ответ при входе Мастера');
+      return;
+    }
 
-    socket.auth = { token };
-    socket.connect();
+    localStorage.setItem(STORAGE_KEYS.TOKEN, payload.token);
+    gmModal.close();
+    passEl.value = '';
+    setSocketAuth();
+
+    if (socket.connected) {
+      sendHandshake();
+    } else {
+      socket.connect();
+    }
+
+    logEvent('Мастер вошёл в систему');
   } catch (err) {
     logEvent('Ошибка входа Мастера', err?.message ?? String(err));
   }
-});
+}
 
-// Player Join flow (modal)
-document.getElementById('join-open').addEventListener('click', () => joinModal.open());
-document.getElementById('join-session-btn').addEventListener('click', () => {
-  const nickname = document.getElementById('join-nickname').value.trim();
-  const sessionId = document.getElementById('join-session').value.trim() || null;
-  if (!nickname) return;
+function sendPing() {
+  if (!socket?.connected) return;
+  const rid = createRid();
+  const started = performance.now();
+  pendingPings.set(rid, started);
 
-  joinModal.close();
-  socket.auth = { nickname, sessionId };
-  socket.connect();
-});
+  const envelope = {
+    type: 'core.ping',
+    rid,
+    ts: Date.now(),
+    payload: { origin: 'frontend' },
+  };
+  socket.emit('message', envelope);
+  logEvent('Пинг отправлен', { rid });
+}
 
-const tokenFromStorage = localStorage.getItem('jwt');
+function modal(el) {
+  return {
+    open: () => el.setAttribute('data-open', 'true'),
+    close: () => el.removeAttribute('data-open'),
+    el,
+  };
+}
+
+const gmModal = modal(document.getElementById('modal-gm'));
+const joinModal = createJoinModal({ onSubmit: submitJoin });
+
+document.querySelectorAll('[data-close]').forEach((node) =>
+  node.addEventListener('click', () => {
+    gmModal.close();
+    joinModal.close();
+  }),
+);
+
+document.getElementById('gm-login-open').addEventListener('click', () => gmModal.open());
+document.getElementById('gm-login-btn').addEventListener('click', handleGmLogin);
+document.getElementById('join-open').addEventListener('click', openJoin);
+createSessionBtn?.addEventListener('click', createSession);
+sessionCopyBtn?.addEventListener('click', handleCopySessionCode);
+sessionInviteBtn?.addEventListener('click', handleCopyInviteLink);
+pingButton?.addEventListener('click', sendPing);
+
+const storedSessionId = localStorage.getItem(STORAGE_KEYS.SESSION_ID);
+if (storedSessionId) {
+  setSessionId(storedSessionId, { persist: false, syncAuth: false });
+}
+
+const storedSessionCode = localStorage.getItem(STORAGE_KEYS.SESSION_CODE);
+if (storedSessionCode) {
+  updateSessionCode(storedSessionCode, { persist: false });
+}
+
+const urlParams = new URLSearchParams(window.location.search);
+const inviteCode = urlParams.get('code');
+if (inviteCode) {
+  joinModal.setValues({ code: inviteCode.toUpperCase().slice(0, 6) });
+  urlParams.delete('code');
+  const next = urlParams.toString();
+  const cleanedUrl = `${window.location.pathname}${next ? `?${next}` : ''}${window.location.hash}`;
+  window.history.replaceState(null, document.title, cleanedUrl);
+}
+
+socket = window.io('/ws', { autoConnect: false });
+
+const tokenFromStorage = getStoredToken();
 if (tokenFromStorage) {
-  socket.auth = { token: tokenFromStorage };
+  setSocketAuth();
   socket.connect();
+} else {
+  updateSessionControls();
+  syncVisibility();
 }
 
 socket.on('connect', () => {
   setStatus('ONLINE');
-
-  const token = localStorage.getItem('jwt') || null;
-  const { nickname, sessionId } = socket.auth || {};
-  const role = token ? 'MASTER' : 'PLAYER';
-
-  const envelope = {
-    type: 'core.handshake:in',
-    rid: createRid(),
-    ts: Date.now(),
-    payload: { role, nickname, sessionId, token },
-  };
-
-  socket.emit('message', envelope);
-  logEvent('Рукопожатие отправлено', envelope);
+  setSocketAuth();
+  sendHandshake();
 });
 
 socket.on('disconnect', (reason) => {
@@ -237,10 +504,23 @@ socket.on('message', (envelope) => {
     case 'core.handshake:out': {
       const role = payload?.role ?? 'GUEST';
       updateRole(role);
-      updateSessionCode(payload?.sessionId ?? null);
+
+      const sessionId = payload?.sessionId ?? null;
+      setSessionId(sessionId);
+
+      if (!sessionId) {
+        updateSessionCode(null);
+      } else if (!currentSessionCode) {
+        const remembered = localStorage.getItem(STORAGE_KEYS.SESSION_CODE);
+        if (remembered) {
+          updateSessionCode(remembered, { persist: false });
+        }
+      }
+
       logEvent('Рукопожатие подтверждено', {
         role,
-        sessionId: payload?.sessionId ?? null,
+        sessionId,
+        username: payload?.username ?? null,
         ts,
         rid,
       });
@@ -263,21 +543,5 @@ socket.on('message', (envelope) => {
   }
 });
 
-pingButton.addEventListener('click', () => {
-  if (!socket.connected) return;
-  const rid = createRid();
-  const started = performance.now();
-  pendingPings.set(rid, started);
-
-  const envelope = {
-    type: 'core.ping',
-    rid,
-    ts: Date.now(),
-    payload: { origin: 'frontend' },
-  };
-  socket.emit('message', envelope);
-  logEvent('Пинг отправлен', { rid });
-});
-
-// Initial UI
 setStatus('OFFLINE');
+syncVisibility();

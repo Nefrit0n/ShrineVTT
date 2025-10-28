@@ -9,16 +9,20 @@ if (!JWT_SECRET) {
 const DEFAULT_EXPIRES_IN = '4h';
 
 /**
- * @param {{ id: number; username: string; role: string }} user
+ * @param {{ id: string | number; username: string; role: string; sessionId?: string | null }} user
  * @param {{ expiresIn?: string | number }} [options]
  * @returns {string}
  */
 export function signUser(user, options = {}) {
   const payload = {
-    sub: user.id,
+    sub: String(user.id),
     username: user.username,
     role: user.role,
   };
+
+  if (user.sessionId) {
+    payload.sessionId = user.sessionId;
+  }
 
   return jwt.sign(payload, JWT_SECRET, {
     expiresIn: options.expiresIn ?? DEFAULT_EXPIRES_IN,
@@ -27,7 +31,7 @@ export function signUser(user, options = {}) {
 
 /**
  * @param {string} token
- * @returns {{ id: number; username: string; role: string }}
+ * @returns {{ id: string; username: string; role: string; sessionId?: string | null }}
  */
 export function verifyToken(token) {
   const decoded = jwt.verify(token, JWT_SECRET);
@@ -35,14 +39,21 @@ export function verifyToken(token) {
     throw new Error('Invalid token payload');
   }
 
-  const id = Number(decoded.sub);
+  const rawId = decoded.sub;
+  const id = typeof rawId === 'string' ? rawId : typeof rawId === 'number' ? String(rawId) : null;
   const { username, role } = decoded;
 
-  if (!Number.isFinite(id) || typeof username !== 'string' || typeof role !== 'string') {
+  if (!id || typeof username !== 'string' || typeof role !== 'string') {
     throw new Error('Invalid token payload');
   }
 
-  return { id, username, role };
+  const result = { id, username, role };
+
+  if (typeof decoded.sessionId === 'string') {
+    result.sessionId = decoded.sessionId;
+  }
+
+  return result;
 }
 
 export default {
