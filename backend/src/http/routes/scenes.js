@@ -110,6 +110,46 @@ export default function createScenesRouter({
     }
   });
 
+  router.get('/sessions/:sessionId/active-scene', (req, res) => {
+    const token = extractBearerToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    let user;
+    try {
+      user = jwt.verifyToken(token);
+    } catch (err) {
+      logger?.warn({ err }, 'Failed to verify token for active scene fetch');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { sessionId } = req.params;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'sessionId is required' });
+    }
+
+    const session = sessionRepository.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (user.role === USER_ROLES.MASTER) {
+      if (session.masterUserId && session.masterUserId !== user.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    } else if (user.role === USER_ROLES.PLAYER) {
+      if (!user.sessionId || user.sessionId !== sessionId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    } else {
+      return res.status(403).json({ error: 'Unsupported role' });
+    }
+
+    const activeSceneId = sessionService.getActiveSceneId(sessionId);
+    return res.json({ sessionId, activeSceneId: activeSceneId ?? null });
+  });
+
   router.get('/scenes/:sceneId/snapshot', (req, res) => {
     const token = extractBearerToken(req);
     if (!token) {

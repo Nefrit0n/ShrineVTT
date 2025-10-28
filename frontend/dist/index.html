@@ -236,17 +236,20 @@
         </section>
       </aside>
 
-      <section class="board" aria-label="Игровое поле">
-        <div class="board__frame">
-          <canvas id="scene-canvas" class="board__canvas" aria-label="Полотно сцены"></canvas>
-          <div class="board__overlay" aria-hidden="true">
-            <div class="board__empty">
-              <p class="board__empty-title">Подготовьте сцену</p>
-              <p class="board__empty-text">Загрузите карту или разместите жетоны, чтобы заполнить поле. Инструменты сетки, тумана и маркеров появятся автоматически.</p>
+        <section class="board" aria-label="Игровое поле">
+          <div class="board__frame">
+            <canvas id="scene-canvas" class="board__canvas" aria-label="Полотно сцены"></canvas>
+            <div class="board__overlay" id="board-overlay" role="status">
+              <div class="board__placeholder">
+                <p id="board-overlay-title" class="board__placeholder-title">Сцена не выбрана</p>
+                <p id="board-overlay-text" class="board__placeholder-text">Сделайте сцену активной или обновите состояние, чтобы увидеть карту.</p>
+                <button id="board-overlay-retry" class="btn btn--ghost board__placeholder-action" type="button">
+                  Загрузить активную
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
       <section class="chronicle" aria-label="Хроника событий">
         <header class="chronicle__header">
