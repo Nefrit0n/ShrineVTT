@@ -17,14 +17,6 @@ export default function createWsServer(httpServer, { logger = log, jwt } = {}) {
   const namespace = io.of(WS_NAMESPACE);
 
   registerWsMiddleware(namespace, { logger, jwt });
-
-  namespace.on('connection', (socket) => {
-    if (socket.data?.sessionId) {
-      socket.join(socket.data.sessionId);
-      logger?.info({ sessionId: socket.data.sessionId, socketId: socket.id }, 'Joined session room');
-    }
-  });
-
   registerCoreHandlers(namespace, { logger });
   registerCommandHandlers(namespace, { logger });
 
