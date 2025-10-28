@@ -46,6 +46,16 @@ export default class SessionRepository {
       FROM session_members
       WHERE sessionId = ? AND lower(username) = lower(?)
     `);
+    this.listSessionsByMasterStmt = this.db.prepare(`
+      SELECT id, code, masterUserId, createdAt
+      FROM sessions
+      WHERE masterUserId = ?
+      ORDER BY datetime(createdAt) DESC
+    `);
+    this.deleteMemberStmt = this.db.prepare(`
+      DELETE FROM session_members
+      WHERE sessionId = ? AND userId = ?
+    `);
   }
 
   createSession({ masterUserId }) {
@@ -99,6 +109,17 @@ export default class SessionRepository {
   findMemberByUsername(sessionId, username) {
     if (!sessionId || !username) return null;
     return this.findMemberByUsernameStmt.get(sessionId, username) ?? null;
+  }
+
+  listByMaster(masterUserId) {
+    if (!masterUserId) return [];
+    return this.listSessionsByMasterStmt.all(masterUserId) ?? [];
+  }
+
+  removeMember({ sessionId, userId }) {
+    if (!sessionId || !userId) return false;
+    const info = this.deleteMemberStmt.run(sessionId, userId);
+    return info.changes > 0;
   }
 }
 

@@ -6,14 +6,47 @@ const roleEl = document.getElementById('role-indicator');
 const sessionCodeEl = document.getElementById('session-code');
 const sessionChipEl = document.getElementById('session-chip');
 const createSessionBtn = document.getElementById('create-session-btn');
+const loadSessionBtn = document.getElementById('load-session-btn');
 const sessionCopyBtn = document.getElementById('session-copy-btn');
 const sessionInviteBtn = document.getElementById('session-invite-btn');
+const leaveSessionBtn = document.getElementById('leave-session-btn');
+const logoutBtn = document.getElementById('logout-btn');
 const pingButton = document.getElementById('ping-button');
 const logContainer = document.getElementById('log-entries');
 const logEmptyState = document.getElementById('log-empty');
 const canvas = document.getElementById('scene-canvas');
 const ctx = canvas.getContext('2d');
 const visibilityTargets = Array.from(document.querySelectorAll('[data-visible]'));
+const journalTextarea = document.getElementById('player-notes');
+const journalStatusEl = document.getElementById('player-notes-status');
+const sessionSavesModalEl = document.getElementById('modal-session-saves');
+const sessionSavesList = document.getElementById('session-saves-list');
+const sessionSavesEmpty = document.getElementById('session-saves-empty');
+const sessionLoadConfirmBtn = document.getElementById('session-load-confirm');
+
+const JOURNAL_SAVE_DEBOUNCE = 800;
+const JOURNAL_STATUS_CLASSES = [
+  'journal__status--idle',
+  'journal__status--dirty',
+  'journal__status--saving',
+  'journal__status--saved',
+  'journal__status--error',
+  'journal__status--disabled',
+];
+
+const journalState = {
+  loadedSessionId: null,
+  loadingSessionId: null,
+  saveTimeoutId: null,
+  isSaving: false,
+  savedValue: '',
+};
+
+const sessionSavesState = {
+  sessions: [],
+  selectedId: null,
+  isLoading: false,
+};
 
 const STORAGE_KEYS = Object.freeze({
   TOKEN: 'jwt',
@@ -96,6 +129,514 @@ function logEvent(message, details) {
   logContainer.scrollTo({ top: logContainer.scrollHeight, behavior: 'smooth' });
 }
 
+function setJournalStatus(text, variant = 'idle') {
+  if (!journalStatusEl) return;
+  if (typeof text === 'string') {
+    journalStatusEl.textContent = text;
+  }
+
+  JOURNAL_STATUS_CLASSES.forEach((cls) => journalStatusEl.classList.remove(cls));
+  const className = JOURNAL_STATUS_CLASSES.includes(`journal__status--${variant}`)
+    ? `journal__status--${variant}`
+    : 'journal__status--idle';
+  journalStatusEl.classList.add(className);
+}
+
+function clearJournalSaveTimeout() {
+  if (journalState.saveTimeoutId) {
+    clearTimeout(journalState.saveTimeoutId);
+    journalState.saveTimeoutId = null;
+  }
+}
+
+function disableJournal(message, { clearValue = true } = {}) {
+  if (!journalTextarea) return;
+  clearJournalSaveTimeout();
+  journalState.isSaving = false;
+  journalState.loadingSessionId = null;
+  journalState.loadedSessionId = null;
+  journalState.savedValue = '';
+
+  if (clearValue) {
+    journalTextarea.value = '';
+  }
+
+  journalTextarea.setAttribute('disabled', '');
+  setJournalStatus(message, 'disabled');
+}
+
+function refreshJournalAccess() {
+  if (!journalTextarea) return;
+
+  const token = getStoredToken();
+  if (!currentSessionId || !token) {
+    disableJournal('Подключитесь к сессии, чтобы вести заметки');
+    return;
+  }
+
+  if (journalState.loadedSessionId !== currentSessionId && !journalState.loadingSessionId) {
+    loadPlayerNotes(currentSessionId);
+    return;
+  }
+
+  journalTextarea.removeAttribute('disabled');
+
+  if (journalTextarea.value === journalState.savedValue) {
+    setJournalStatus(journalTextarea.value ? 'Сохранено' : 'Готово к записи', journalTextarea.value ? 'saved' : 'idle');
+  } else {
+    setJournalStatus('Изменения не сохранены', 'dirty');
+  }
+}
+
+async function loadPlayerNotes(sessionId = currentSessionId) {
+  if (!journalTextarea) return;
+
+  const token = getStoredToken();
+  if (!sessionId || !token) {
+    disableJournal('Подключитесь к сессии, чтобы вести заметки');
+    return;
+  }
+
+  journalState.loadingSessionId = sessionId;
+  setJournalStatus('Загрузка заметок…', 'saving');
+  journalTextarea.setAttribute('disabled', '');
+
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/player-state`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 403) {
+        disableJournal('Нет доступа к журналу', { clearValue: false });
+      } else {
+        journalTextarea.removeAttribute('disabled');
+        setJournalStatus('Не удалось загрузить заметки', 'error');
+        logEvent('Ошибка загрузки заметок', `${res.status} ${res.statusText}`);
+      }
+      return;
+    }
+
+    const data = await res.json().catch(() => ({}));
+    const notes = typeof data.notes === 'string' ? data.notes : '';
+
+    if (currentSessionId !== sessionId) {
+      return;
+    }
+
+    journalState.loadedSessionId = sessionId;
+    journalState.savedValue = notes;
+    journalTextarea.value = notes;
+    journalTextarea.removeAttribute('disabled');
+    setJournalStatus(notes ? 'Сохранено' : 'Готово к записи', notes ? 'saved' : 'idle');
+  } catch (err) {
+    if (currentSessionId === sessionId) {
+      journalTextarea.removeAttribute('disabled');
+      setJournalStatus('Не удалось загрузить заметки', 'error');
+    }
+    logEvent('Ошибка загрузки заметок', err?.message ?? String(err));
+  } finally {
+    if (journalState.loadingSessionId === sessionId) {
+      journalState.loadingSessionId = null;
+    }
+  }
+}
+
+function scheduleJournalSave() {
+  if (!journalTextarea || journalTextarea.hasAttribute('disabled')) return;
+  clearJournalSaveTimeout();
+  journalState.saveTimeoutId = setTimeout(() => {
+    journalState.saveTimeoutId = null;
+    savePlayerNotes();
+  }, JOURNAL_SAVE_DEBOUNCE);
+}
+
+async function savePlayerNotes() {
+  if (!journalTextarea) return;
+  if (!currentSessionId) return;
+
+  const token = getStoredToken();
+  if (!token) {
+    disableJournal('Подключитесь к сессии, чтобы вести заметки');
+    return;
+  }
+
+  clearJournalSaveTimeout();
+
+  const sessionId = currentSessionId;
+  const value = journalTextarea.value;
+
+  if (journalState.isSaving) return;
+  if (value === journalState.savedValue) {
+    setJournalStatus(value ? 'Сохранено' : 'Готово к записи', value ? 'saved' : 'idle');
+    return;
+  }
+
+  journalState.isSaving = true;
+  setJournalStatus('Сохранение…', 'saving');
+
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/player-state`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ notes: value }),
+    });
+
+    if (!res.ok) {
+      if (res.status === 403) {
+        disableJournal('Нет доступа к журналу', { clearValue: false });
+      } else {
+        setJournalStatus('Ошибка сохранения', 'error');
+        logEvent('Ошибка сохранения заметок', `${res.status} ${res.statusText}`);
+      }
+      return;
+    }
+
+    const data = await res.json().catch(() => ({}));
+    const notes = typeof data.notes === 'string' ? data.notes : value;
+
+    if (currentSessionId !== sessionId) {
+      return;
+    }
+
+    journalState.savedValue = notes;
+    journalState.loadedSessionId = sessionId;
+    if (journalTextarea.value !== notes) {
+      journalTextarea.value = notes;
+    }
+    setJournalStatus(notes ? 'Сохранено' : 'Готово к записи', notes ? 'saved' : 'idle');
+  } catch (err) {
+    if (currentSessionId === sessionId) {
+      setJournalStatus('Ошибка сохранения', 'error');
+    }
+    logEvent('Ошибка сохранения заметок', err?.message ?? String(err));
+  } finally {
+    journalState.isSaving = false;
+    if (currentSessionId === sessionId) {
+      if (journalTextarea.value !== journalState.savedValue && !journalTextarea.hasAttribute('disabled')) {
+        setJournalStatus('Изменения не сохранены', 'dirty');
+        scheduleJournalSave();
+      }
+    }
+  }
+}
+
+function handleJournalInput() {
+  if (!journalTextarea || journalTextarea.hasAttribute('disabled')) return;
+  if (!currentSessionId || !getStoredToken()) {
+    disableJournal('Подключитесь к сессии, чтобы вести заметки');
+    return;
+  }
+
+  if (journalTextarea.value === journalState.savedValue) {
+    if (!journalState.isSaving) {
+      setJournalStatus(journalTextarea.value ? 'Сохранено' : 'Готово к записи', journalTextarea.value ? 'saved' : 'idle');
+      clearJournalSaveTimeout();
+    }
+    return;
+  }
+
+  setJournalStatus('Изменения не сохранены', 'dirty');
+  scheduleJournalSave();
+}
+
+function handleJournalSessionChange(previousSessionId, nextSessionId) {
+  if (!journalTextarea) return;
+
+  if (previousSessionId !== nextSessionId) {
+    clearJournalSaveTimeout();
+    journalState.savedValue = '';
+    journalState.loadedSessionId = null;
+  }
+
+  if (!nextSessionId) {
+    disableJournal('Подключитесь к сессии, чтобы вести заметки');
+    return;
+  }
+
+  refreshJournalAccess();
+}
+
+function resetSessionSavesState({ keepSessions = false } = {}) {
+  if (!keepSessions) {
+    sessionSavesState.sessions = [];
+  }
+  sessionSavesState.selectedId = null;
+  sessionSavesState.isLoading = false;
+  if (sessionLoadConfirmBtn) {
+    sessionLoadConfirmBtn.setAttribute('disabled', '');
+  }
+  if (sessionSavesList) {
+    sessionSavesList.innerHTML = '';
+  }
+  if (sessionSavesEmpty) {
+    sessionSavesEmpty.textContent = 'Войдите как Мастер, чтобы просмотреть сохранения.';
+    sessionSavesEmpty.removeAttribute('hidden');
+  }
+}
+
+function setSessionSavesLoading(isLoading) {
+  sessionSavesState.isLoading = Boolean(isLoading);
+  if (!sessionSavesEmpty) return;
+  if (sessionSavesState.isLoading) {
+    sessionSavesEmpty.textContent = 'Загружаем сохранения...';
+    sessionSavesEmpty.removeAttribute('hidden');
+  }
+}
+
+function formatSessionTimestamp(createdAt) {
+  if (!createdAt) return '';
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function selectSessionSave(sessionId) {
+  sessionSavesState.selectedId = sessionId ?? null;
+  if (!sessionSavesList) return;
+
+  const buttons = sessionSavesList.querySelectorAll('.session-saves__button');
+  buttons.forEach((btn) => {
+    if (btn.dataset.sessionId === sessionSavesState.selectedId) {
+      btn.classList.add('is-selected');
+      btn.setAttribute('aria-pressed', 'true');
+    } else {
+      btn.classList.remove('is-selected');
+      btn.setAttribute('aria-pressed', 'false');
+    }
+  });
+
+  if (sessionLoadConfirmBtn) {
+    if (sessionSavesState.selectedId) {
+      sessionLoadConfirmBtn.removeAttribute('disabled');
+    } else {
+      sessionLoadConfirmBtn.setAttribute('disabled', '');
+    }
+  }
+}
+
+function renderSessionSaves() {
+  if (!sessionSavesList || !sessionSavesEmpty) return;
+
+  sessionSavesList.innerHTML = '';
+
+  if (sessionSavesState.isLoading) {
+    return;
+  }
+
+  if (!sessionSavesState.sessions.length) {
+    sessionSavesEmpty.textContent = 'Сохранения не найдены. Создайте новую сессию, чтобы начать.';
+    sessionSavesEmpty.removeAttribute('hidden');
+    if (sessionLoadConfirmBtn) {
+      sessionLoadConfirmBtn.setAttribute('disabled', '');
+    }
+    return;
+  }
+
+  sessionSavesEmpty.setAttribute('hidden', '');
+
+  sessionSavesState.sessions.forEach((session) => {
+    const item = document.createElement('li');
+    item.className = 'session-saves__item';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'session-saves__button';
+    button.dataset.sessionId = session.id;
+    button.dataset.sessionCode = session.code;
+    button.setAttribute('aria-pressed', sessionSavesState.selectedId === session.id ? 'true' : 'false');
+
+    const codeEl = document.createElement('span');
+    codeEl.className = 'session-saves__code';
+    codeEl.textContent = session.code;
+    button.appendChild(codeEl);
+
+    const metaEl = document.createElement('span');
+    metaEl.className = 'session-saves__meta';
+    metaEl.textContent = formatSessionTimestamp(session.createdAt) || '—';
+    button.appendChild(metaEl);
+
+    button.addEventListener('click', () => {
+      selectSessionSave(session.id);
+    });
+
+    if (session.id === sessionSavesState.selectedId) {
+      button.classList.add('is-selected');
+    }
+
+    item.appendChild(button);
+    sessionSavesList.appendChild(item);
+  });
+
+  const initialSelection =
+    sessionSavesState.selectedId ?? sessionSavesState.sessions[0]?.id ?? null;
+  if (initialSelection && initialSelection !== sessionSavesState.selectedId) {
+    selectSessionSave(initialSelection);
+  }
+}
+
+async function refreshSessionSaves({ force = false, silent = false } = {}) {
+  if (currentRole !== 'MASTER') {
+    resetSessionSavesState();
+    return [];
+  }
+
+  const token = getStoredToken();
+  if (!token) {
+    resetSessionSavesState();
+    return [];
+  }
+
+  if (sessionSavesState.isLoading && !force) {
+    return sessionSavesState.sessions;
+  }
+
+  setSessionSavesLoading(true);
+  if (!silent) {
+    renderSessionSaves();
+  }
+
+  try {
+    const res = await fetch('/api/sessions', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error((await res.json().catch(() => ({})))?.error ?? 'Не удалось получить список сессий');
+    }
+
+    const payload = await res.json();
+    const sessions = Array.isArray(payload?.sessions) ? payload.sessions : [];
+    sessionSavesState.sessions = sessions.map((session) => ({
+      id: session.id,
+      code: String(session.code ?? '').toUpperCase(),
+      createdAt: session.createdAt,
+    }));
+    sessionSavesState.selectedId = sessionSavesState.sessions.find((s) => s.id === currentSessionId)?.id ?? null;
+    return sessionSavesState.sessions;
+  } catch (err) {
+    logEvent('Не удалось загрузить список сохранений', err?.message ?? String(err));
+    sessionSavesState.sessions = [];
+    sessionSavesState.selectedId = null;
+    if (sessionSavesEmpty) {
+      sessionSavesEmpty.textContent = 'Не удалось загрузить сохранения. Попробуйте ещё раз.';
+      sessionSavesEmpty.removeAttribute('hidden');
+    }
+    return [];
+  } finally {
+    setSessionSavesLoading(false);
+    renderSessionSaves();
+  }
+}
+
+async function openSessionSavesModal() {
+  if (!sessionSavesModal) return;
+  sessionSavesState.selectedId = currentSessionId ?? null;
+  sessionSavesModal.open();
+  await refreshSessionSaves({ force: true, silent: true });
+  renderSessionSaves();
+}
+
+async function handleSessionLoadConfirm() {
+  const selectedId = sessionSavesState.selectedId;
+  if (!selectedId) return;
+
+  const session = sessionSavesState.sessions.find((s) => s.id === selectedId);
+  if (!session) return;
+
+  setSessionId(session.id);
+  updateSessionCode(session.code);
+  setSocketAuth();
+  sessionSavesState.selectedId = session.id;
+  renderSessionSaves();
+
+  if (socket.connected) {
+    sendHandshake({ sessionId: session.id });
+  } else {
+    socket.connect();
+  }
+
+  sessionSavesModal?.close();
+  logEvent('Загружена сохранённая сессия', { sessionId: session.id, code: session.code });
+}
+
+async function leaveSession() {
+  if (!currentSessionId) return;
+
+  const sessionId = currentSessionId;
+  const token = getStoredToken();
+
+  if (token) {
+    try {
+      await fetch(`/api/sessions/${sessionId}/members/me`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      logEvent('Не удалось уведомить сервер о выходе из сессии', err?.message ?? String(err));
+    }
+  }
+
+  setSessionId(null);
+  updateSessionCode(null);
+  setSocketAuth();
+  selectSessionSave(null);
+  refreshSessionSaves({ force: true, silent: true });
+  sessionSavesModal?.close();
+
+  if (socket.connected) {
+    sendHandshake({ sessionId: null });
+  }
+
+  logEvent('Вы покинули сессию', { sessionId });
+}
+
+async function handleLogout() {
+  const previousSessionId = currentSessionId;
+  const token = getStoredToken();
+
+  if (previousSessionId && token) {
+    try {
+      await fetch(`/api/sessions/${previousSessionId}/members/me`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      logEvent('Не удалось уведомить сервер о выходе из сессии', err?.message ?? String(err));
+    }
+  }
+
+  localStorage.removeItem(STORAGE_KEYS.TOKEN);
+  setSessionId(null);
+  updateSessionCode(null);
+  resetSessionSavesState();
+  sessionSavesModal?.close();
+  setSocketAuth();
+
+  if (socket.connected) {
+    socket.disconnect();
+  } else {
+    updateRole('GUEST');
+    updateSessionControls();
+    syncVisibility();
+  }
+
+  logEvent('Вы вышли из роли');
+}
+
 function getStoredToken() {
   return localStorage.getItem(STORAGE_KEYS.TOKEN);
 }
@@ -117,6 +658,7 @@ function setSocketAuth(extra = {}) {
 
 function updateSessionControls() {
   const hasSession = Boolean(currentSessionId && currentSessionCode);
+  const token = getStoredToken();
 
   if (sessionChipEl) {
     if (hasSession) sessionChipEl.removeAttribute('hidden');
@@ -128,6 +670,27 @@ function updateSessionControls() {
     if (shouldShowCreate) createSessionBtn.removeAttribute('hidden');
     else createSessionBtn.setAttribute('hidden', '');
     createSessionBtn.toggleAttribute('disabled', !isConnected);
+  }
+
+  if (loadSessionBtn) {
+    const shouldShowLoad = currentRole === 'MASTER' && isConnected;
+    if (shouldShowLoad) loadSessionBtn.removeAttribute('hidden');
+    else loadSessionBtn.setAttribute('hidden', '');
+    loadSessionBtn.toggleAttribute('disabled', !isConnected);
+  }
+
+  if (leaveSessionBtn) {
+    const shouldShowLeave = Boolean(currentSessionId);
+    if (shouldShowLeave) leaveSessionBtn.removeAttribute('hidden');
+    else leaveSessionBtn.setAttribute('hidden', '');
+    leaveSessionBtn.toggleAttribute('disabled', !currentSessionId || !isConnected);
+  }
+
+  if (logoutBtn) {
+    const shouldShowLogout = currentRole !== 'GUEST' || Boolean(token);
+    if (shouldShowLogout) logoutBtn.removeAttribute('hidden');
+    else logoutBtn.setAttribute('hidden', '');
+    logoutBtn.toggleAttribute('disabled', false);
   }
 
   sessionCopyBtn?.toggleAttribute('disabled', !hasSession);
@@ -150,6 +713,7 @@ function updateSessionCode(value, { persist = true } = {}) {
 }
 
 function setSessionId(value, { persist = true, syncAuth = true } = {}) {
+  const previousSessionId = currentSessionId;
   currentSessionId = value && typeof value === 'string' ? value : null;
   if (persist) {
     if (currentSessionId) {
@@ -162,6 +726,7 @@ function setSessionId(value, { persist = true, syncAuth = true } = {}) {
   if (syncAuth) {
     setSocketAuth();
   }
+  handleJournalSessionChange(previousSessionId, currentSessionId);
 }
 
 function setStatus(status) {
@@ -186,6 +751,10 @@ function updateRole(role) {
   roleEl.textContent = label;
   currentRole = normalized in ROLE_LABELS ? normalized : 'GUEST';
   body.dataset.role = currentRole.toLowerCase();
+  if (currentRole !== 'MASTER') {
+    resetSessionSavesState();
+    sessionSavesModal?.close();
+  }
   updateSessionControls();
   syncVisibility();
 }
@@ -293,6 +862,7 @@ async function createSession() {
     setSocketAuth();
     sendHandshake({ sessionId: payload.sessionId });
     logEvent('Сессия создана', { sessionId: payload.sessionId, code: payload.code });
+    refreshSessionSaves({ force: true, silent: true });
   } catch (err) {
     logEvent('Ошибка создания сессии', err?.message ?? String(err));
   } finally {
@@ -427,12 +997,14 @@ function modal(el) {
 }
 
 const gmModal = modal(document.getElementById('modal-gm'));
+const sessionSavesModal = sessionSavesModalEl ? modal(sessionSavesModalEl) : null;
 const joinModal = createJoinModal({ onSubmit: submitJoin });
 
 document.querySelectorAll('[data-close]').forEach((node) =>
   node.addEventListener('click', () => {
     gmModal.close();
     joinModal.close();
+    sessionSavesModal?.close();
   }),
 );
 
@@ -440,9 +1012,29 @@ document.getElementById('gm-login-open').addEventListener('click', () => gmModal
 document.getElementById('gm-login-btn').addEventListener('click', handleGmLogin);
 document.getElementById('join-open').addEventListener('click', openJoin);
 createSessionBtn?.addEventListener('click', createSession);
+loadSessionBtn?.addEventListener('click', openSessionSavesModal);
 sessionCopyBtn?.addEventListener('click', handleCopySessionCode);
 sessionInviteBtn?.addEventListener('click', handleCopyInviteLink);
+leaveSessionBtn?.addEventListener('click', () => {
+  leaveSession();
+});
+logoutBtn?.addEventListener('click', () => {
+  handleLogout();
+});
 pingButton?.addEventListener('click', sendPing);
+journalTextarea?.addEventListener('input', handleJournalInput);
+journalTextarea?.addEventListener('blur', () => {
+  if (!journalTextarea || journalTextarea.hasAttribute('disabled')) return;
+  if (journalTextarea.value !== journalState.savedValue) {
+    savePlayerNotes();
+  }
+});
+
+sessionLoadConfirmBtn?.addEventListener('click', handleSessionLoadConfirm);
+
+if (journalTextarea) {
+  disableJournal('Подключитесь к сессии, чтобы вести заметки');
+}
 
 const storedSessionId = localStorage.getItem(STORAGE_KEYS.SESSION_ID);
 if (storedSessionId) {
@@ -515,6 +1107,13 @@ socket.on('message', (envelope) => {
         if (remembered) {
           updateSessionCode(remembered, { persist: false });
         }
+      }
+
+      if (role === 'MASTER') {
+        refreshSessionSaves({ silent: true });
+      } else {
+        resetSessionSavesState();
+        sessionSavesModal?.close();
       }
 
       logEvent('Рукопожатие подтверждено', {

@@ -49,12 +49,21 @@
           <button id="create-session-btn" class="btn btn--primary session-controls__action" type="button" hidden>
             Создать сессию
           </button>
+          <button id="load-session-btn" class="btn btn--secondary session-controls__action" type="button" hidden>
+            Загрузить сессию
+          </button>
           <div id="session-chip" class="session-chip" hidden>
             <span class="session-chip__label">Код</span>
             <span id="session-code" class="session-chip__code">—</span>
             <button id="session-copy-btn" class="session-chip__action" type="button">Копировать</button>
             <button id="session-invite-btn" class="session-chip__action" type="button">Ссылка-приглашение</button>
           </div>
+          <button id="leave-session-btn" class="btn btn--ghost session-controls__action" type="button" hidden>
+            Покинуть сессию
+          </button>
+          <button id="logout-btn" class="btn btn--ghost session-controls__action" type="button" hidden>
+            Выйти из роли
+          </button>
         </div>
       </div>
     </header>
@@ -123,9 +132,19 @@
             <h2 class="pillar__title">Полевой журнал</h2>
             <p class="pillar__hint">Фиксируйте идеи и события прямо во время партии.</p>
           </header>
-          <div class="scribe">
-            <div class="scribe__sheet" aria-hidden="true"></div>
-            <p class="scribe__placeholder">Функция заметок готовится к релизу.</p>
+          <div id="player-notes-block" class="journal">
+            <label class="journal__field">
+              <span class="journal__label">Мои заметки</span>
+              <textarea
+                id="player-notes"
+                class="journal__textarea"
+                placeholder="Записывайте подсказки, находки и планы действий"
+                rows="10"
+              ></textarea>
+            </label>
+            <div id="player-notes-status" class="journal__status journal__status--idle" role="status" aria-live="polite">
+              Подключитесь к сессии, чтобы вести заметки
+            </div>
           </div>
         </section>
 
@@ -163,6 +182,28 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <div id="modal-session-saves" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__dialog">
+      <header class="modal__header">
+        <span class="modal__glyph" aria-hidden="true">✦</span>
+        <div>
+          <h3 class="modal__title">Выбор сохранения</h3>
+          <p class="modal__subtitle">Продолжите предыдущую сессию или переключитесь на другую.</p>
+        </div>
+        <button class="modal__close" title="Закрыть" data-close aria-label="Закрыть">✕</button>
+      </header>
+      <div class="modal__body">
+        <p id="session-saves-empty" class="session-saves__empty">Войдите как Мастер, чтобы просмотреть сохранения.</p>
+        <ul id="session-saves-list" class="session-saves" role="list"></ul>
+      </div>
+      <footer class="modal__footer">
+        <button class="btn btn--ghost" data-close>Отмена</button>
+        <button id="session-load-confirm" class="btn btn--primary" disabled>Загрузить</button>
+      </footer>
+    </div>
   </div>
 
   <div id="modal-gm" class="modal" aria-hidden="true" role="dialog" aria-modal="true">

@@ -50,6 +50,18 @@ db.exec(`
     PRIMARY KEY (sessionId, userId),
     FOREIGN KEY (sessionId) REFERENCES sessions(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS player_state (
+    sessionId TEXT NOT NULL,
+    userId TEXT NOT NULL,
+    username TEXT NOT NULL,
+    tools TEXT NOT NULL DEFAULT '[]',
+    inventory TEXT NOT NULL DEFAULT '[]',
+    notes TEXT NOT NULL DEFAULT '',
+    actorId TEXT,
+    PRIMARY KEY (sessionId, userId),
+    FOREIGN KEY (sessionId) REFERENCES sessions(id) ON DELETE CASCADE
+  );
 `);
 
 export default db;
