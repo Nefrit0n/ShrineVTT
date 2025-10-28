@@ -123,9 +123,19 @@
             <h2 class="pillar__title">Полевой журнал</h2>
             <p class="pillar__hint">Фиксируйте идеи и события прямо во время партии.</p>
           </header>
-          <div class="scribe">
-            <div class="scribe__sheet" aria-hidden="true"></div>
-            <p class="scribe__placeholder">Функция заметок готовится к релизу.</p>
+          <div id="player-notes-block" class="journal">
+            <label class="journal__field">
+              <span class="journal__label">Мои заметки</span>
+              <textarea
+                id="player-notes"
+                class="journal__textarea"
+                placeholder="Записывайте подсказки, находки и планы действий"
+                rows="10"
+              ></textarea>
+            </label>
+            <div id="player-notes-status" class="journal__status journal__status--idle" role="status" aria-live="polite">
+              Подключитесь к сессии, чтобы вести заметки
+            </div>
           </div>
         </section>
 

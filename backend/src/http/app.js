@@ -9,12 +9,13 @@ import healthRouter from './routes/health.js';
 import createAuthRouter from './routes/auth.js';
 import readmeRouter from './routes/readme.js';
 import createSessionsRouter from './routes/sessions.js';
+import createPlayerStateRouter from './routes/playerState.js';
 
 const staticDir = path.resolve(
   fileURLToPath(new URL('../../../frontend/dist', import.meta.url)),
 );
 
-export function createApp({ logger, userRepository, sessionRepository, jwt }) {
+export function createApp({ logger, userRepository, sessionRepository, playerStateRepository, jwt }) {
   const app = express();
 
   app.use(helmet());
@@ -26,10 +27,18 @@ export function createApp({ logger, userRepository, sessionRepository, jwt }) {
 
   if (!userRepository) throw new Error('userRepository dependency is required');
   if (!sessionRepository) throw new Error('sessionRepository dependency is required');
+  if (!playerStateRepository) throw new Error('playerStateRepository dependency is required');
   if (!jwt) throw new Error('jwt dependency is required');
 
   app.use('/api/auth', createAuthRouter({ userRepository, jwt, logger }));
-  app.use('/api/sessions', createSessionsRouter({ sessionRepository, jwt, logger }));
+  app.use(
+    '/api/sessions',
+    createSessionsRouter({ sessionRepository, playerStateRepository, jwt, logger }),
+  );
+  app.use(
+    '/api/sessions/:sessionId/player-state',
+    createPlayerStateRouter({ playerStateRepository, jwt, logger }),
+  );
   app.use('/api', readmeRouter);
 
   app.use(express.static(staticDir));

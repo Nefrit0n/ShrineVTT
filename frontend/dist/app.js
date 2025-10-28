@@ -14,6 +14,26 @@ const logEmptyState = document.getElementById('log-empty');
 const canvas = document.getElementById('scene-canvas');
 const ctx = canvas.getContext('2d');
 const visibilityTargets = Array.from(document.querySelectorAll('[data-visible]'));
+const journalTextarea = document.getElementById('player-notes');
+const journalStatusEl = document.getElementById('player-notes-status');
+
+const JOURNAL_SAVE_DEBOUNCE = 800;
+const JOURNAL_STATUS_CLASSES = [
+  'journal__status--idle',
+  'journal__status--dirty',
+  'journal__status--saving',
+  'journal__status--saved',
+  'journal__status--error',
+  'journal__status--disabled',
+];
+
+const journalState = {
+  loadedSessionId: null,
+  loadingSessionId: null,
+  saveTimeoutId: null,
+  isSaving: false,
+  savedValue: '',
+};
 
 const STORAGE_KEYS = Object.freeze({
   TOKEN: 'jwt',
@@ -96,6 +116,239 @@ function logEvent(message, details) {
   logContainer.scrollTo({ top: logContainer.scrollHeight, behavior: 'smooth' });
 }
 
+function setJournalStatus(text, variant = 'idle') {
+  if (!journalStatusEl) return;
+  if (typeof text === 'string') {
+    journalStatusEl.textContent = text;
+  }
+
+  JOURNAL_STATUS_CLASSES.forEach((cls) => journalStatusEl.classList.remove(cls));
+  const className = JOURNAL_STATUS_CLASSES.includes(`journal__status--${variant}`)
+    ? `journal__status--${variant}`
+    : 'journal__status--idle';
+  journalStatusEl.classList.add(className);
+}
+
+function clearJournalSaveTimeout() {
+  if (journalState.saveTimeoutId) {
+    clearTimeout(journalState.saveTimeoutId);
+    journalState.saveTimeoutId = null;
+  }
+}
+
+function disableJournal(message, { clearValue = true } = {}) {
+  if (!journalTextarea) return;
+  clearJournalSaveTimeout();
+  journalState.isSaving = false;
+  journalState.loadingSessionId = null;
+  journalState.loadedSessionId = null;
+  journalState.savedValue = '';
+
+  if (clearValue) {
+    journalTextarea.value = '';
+  }
+
+  journalTextarea.setAttribute('disabled', '');
+  setJournalStatus(message, 'disabled');
+}
+
+function refreshJournalAccess() {
+  if (!journalTextarea) return;
+
+  const token = getStoredToken();
+  if (!currentSessionId || !token) {
+    disableJournal('Подключитесь к сессии, чтобы вести заметки');
+    return;
+  }
+
+  if (journalState.loadedSessionId !== currentSessionId && !journalState.loadingSessionId) {
+    loadPlayerNotes(currentSessionId);
+    return;
+  }
+
+  journalTextarea.removeAttribute('disabled');
+
+  if (journalTextarea.value === journalState.savedValue) {
+    setJournalStatus(journalTextarea.value ? 'Сохранено' : 'Готово к записи', journalTextarea.value ? 'saved' : 'idle');
+  } else {
+    setJournalStatus('Изменения не сохранены', 'dirty');
+  }
+}
+
+async function loadPlayerNotes(sessionId = currentSessionId) {
+  if (!journalTextarea) return;
+
+  const token = getStoredToken();
+  if (!sessionId || !token) {
+    disableJournal('Подключитесь к сессии, чтобы вести заметки');
+    return;
+  }
+
+  journalState.loadingSessionId = sessionId;
+  setJournalStatus('Загрузка заметок…', 'saving');
+  journalTextarea.setAttribute('disabled', '');
+
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/player-state`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 403) {
+        disableJournal('Нет доступа к журналу', { clearValue: false });
+      } else {
+        journalTextarea.removeAttribute('disabled');
+        setJournalStatus('Не удалось загрузить заметки', 'error');
+        logEvent('Ошибка загрузки заметок', `${res.status} ${res.statusText}`);
+      }
+      return;
+    }
+
+    const data = await res.json().catch(() => ({}));
+    const notes = typeof data.notes === 'string' ? data.notes : '';
+
+    if (currentSessionId !== sessionId) {
+      return;
+    }
+
+    journalState.loadedSessionId = sessionId;
+    journalState.savedValue = notes;
+    journalTextarea.value = notes;
+    journalTextarea.removeAttribute('disabled');
+    setJournalStatus(notes ? 'Сохранено' : 'Готово к записи', notes ? 'saved' : 'idle');
+  } catch (err) {
+    if (currentSessionId === sessionId) {
+      journalTextarea.removeAttribute('disabled');
+      setJournalStatus('Не удалось загрузить заметки', 'error');
+    }
+    logEvent('Ошибка загрузки заметок', err?.message ?? String(err));
+  } finally {
+    if (journalState.loadingSessionId === sessionId) {
+      journalState.loadingSessionId = null;
+    }
+  }
+}
+
+function scheduleJournalSave() {
+  if (!journalTextarea || journalTextarea.hasAttribute('disabled')) return;
+  clearJournalSaveTimeout();
+  journalState.saveTimeoutId = setTimeout(() => {
+    journalState.saveTimeoutId = null;
+    savePlayerNotes();
+  }, JOURNAL_SAVE_DEBOUNCE);
+}
+
+async function savePlayerNotes() {
+  if (!journalTextarea) return;
+  if (!currentSessionId) return;
+
+  const token = getStoredToken();
+  if (!token) {
+    disableJournal('Подключитесь к сессии, чтобы вести заметки');
+    return;
+  }
+
+  clearJournalSaveTimeout();
+
+  const sessionId = currentSessionId;
+  const value = journalTextarea.value;
+
+  if (journalState.isSaving) return;
+  if (value === journalState.savedValue) {
+    setJournalStatus(value ? 'Сохранено' : 'Готово к записи', value ? 'saved' : 'idle');
+    return;
+  }
+
+  journalState.isSaving = true;
+  setJournalStatus('Сохранение…', 'saving');
+
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/player-state`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ notes: value }),
+    });
+
+    if (!res.ok) {
+      if (res.status === 403) {
+        disableJournal('Нет доступа к журналу', { clearValue: false });
+      } else {
+        setJournalStatus('Ошибка сохранения', 'error');
+        logEvent('Ошибка сохранения заметок', `${res.status} ${res.statusText}`);
+      }
+      return;
+    }
+
+    const data = await res.json().catch(() => ({}));
+    const notes = typeof data.notes === 'string' ? data.notes : value;
+
+    if (currentSessionId !== sessionId) {
+      return;
+    }
+
+    journalState.savedValue = notes;
+    journalState.loadedSessionId = sessionId;
+    if (journalTextarea.value !== notes) {
+      journalTextarea.value = notes;
+    }
+    setJournalStatus(notes ? 'Сохранено' : 'Готово к записи', notes ? 'saved' : 'idle');
+  } catch (err) {
+    if (currentSessionId === sessionId) {
+      setJournalStatus('Ошибка сохранения', 'error');
+    }
+    logEvent('Ошибка сохранения заметок', err?.message ?? String(err));
+  } finally {
+    journalState.isSaving = false;
+    if (currentSessionId === sessionId) {
+      if (journalTextarea.value !== journalState.savedValue && !journalTextarea.hasAttribute('disabled')) {
+        setJournalStatus('Изменения не сохранены', 'dirty');
+        scheduleJournalSave();
+      }
+    }
+  }
+}
+
+function handleJournalInput() {
+  if (!journalTextarea || journalTextarea.hasAttribute('disabled')) return;
+  if (!currentSessionId || !getStoredToken()) {
+    disableJournal('Подключитесь к сессии, чтобы вести заметки');
+    return;
+  }
+
+  if (journalTextarea.value === journalState.savedValue) {
+    if (!journalState.isSaving) {
+      setJournalStatus(journalTextarea.value ? 'Сохранено' : 'Готово к записи', journalTextarea.value ? 'saved' : 'idle');
+      clearJournalSaveTimeout();
+    }
+    return;
+  }
+
+  setJournalStatus('Изменения не сохранены', 'dirty');
+  scheduleJournalSave();
+}
+
+function handleJournalSessionChange(previousSessionId, nextSessionId) {
+  if (!journalTextarea) return;
+
+  if (previousSessionId !== nextSessionId) {
+    clearJournalSaveTimeout();
+    journalState.savedValue = '';
+    journalState.loadedSessionId = null;
+  }
+
+  if (!nextSessionId) {
+    disableJournal('Подключитесь к сессии, чтобы вести заметки');
+    return;
+  }
+
+  refreshJournalAccess();
+}
+
 function getStoredToken() {
   return localStorage.getItem(STORAGE_KEYS.TOKEN);
 }
@@ -150,6 +403,7 @@ function updateSessionCode(value, { persist = true } = {}) {
 }
 
 function setSessionId(value, { persist = true, syncAuth = true } = {}) {
+  const previousSessionId = currentSessionId;
   currentSessionId = value && typeof value === 'string' ? value : null;
   if (persist) {
     if (currentSessionId) {
@@ -162,6 +416,7 @@ function setSessionId(value, { persist = true, syncAuth = true } = {}) {
   if (syncAuth) {
     setSocketAuth();
   }
+  handleJournalSessionChange(previousSessionId, currentSessionId);
 }
 
 function setStatus(status) {
@@ -443,6 +698,17 @@ createSessionBtn?.addEventListener('click', createSession);
 sessionCopyBtn?.addEventListener('click', handleCopySessionCode);
 sessionInviteBtn?.addEventListener('click', handleCopyInviteLink);
 pingButton?.addEventListener('click', sendPing);
+journalTextarea?.addEventListener('input', handleJournalInput);
+journalTextarea?.addEventListener('blur', () => {
+  if (!journalTextarea || journalTextarea.hasAttribute('disabled')) return;
+  if (journalTextarea.value !== journalState.savedValue) {
+    savePlayerNotes();
+  }
+});
+
+if (journalTextarea) {
+  disableJournal('Подключитесь к сессии, чтобы вести заметки');
+}
 
 const storedSessionId = localStorage.getItem(STORAGE_KEYS.SESSION_ID);
 if (storedSessionId) {
