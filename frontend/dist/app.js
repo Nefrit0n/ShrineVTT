@@ -4,8 +4,11 @@ const pingButton = document.getElementById('ping-button');
 const logContainer = document.getElementById('log-entries');
 const canvas = document.getElementById('scene-canvas');
 const ctx = canvas.getContext('2d');
+const sessionInfo = document.getElementById('session-info');
+const sessionCodeButton = document.getElementById('session-code');
+const sidebarViews = document.querySelectorAll('[data-role-view]');
+const tabletopOverlay = document.getElementById('tabletop-overlay');
 
-// Modal helpers
 function modal(el) {
   return {
     open: () => el.setAttribute('data-open', 'true'),
@@ -18,16 +21,23 @@ const gmModal = modal(document.getElementById('modal-gm'));
 const joinModal = modal(document.getElementById('modal-join'));
 
 // Close by backdrop or ✕
-document.querySelectorAll('[data-close]').forEach((n) =>
+document.querySelectorAll('[data-close]').forEach((n) => {
   n.addEventListener('click', () => {
     gmModal.close();
     joinModal.close();
-  }),
-);
+  });
+});
+
+document
+  .querySelectorAll('#gm-login-open, [data-trigger="gm"]')
+  .forEach((el) => el.addEventListener('click', () => gmModal.open()));
+document
+  .querySelectorAll('#join-open, [data-trigger="join"]')
+  .forEach((el) => el.addEventListener('click', () => joinModal.open()));
 
 const STATUS_CLASSES = {
-  ONLINE: 'pill--ok',
-  OFFLINE: 'pill--danger',
+  ONLINE: 'status-pill--ok',
+  OFFLINE: 'status-pill--danger',
 };
 
 function logEvent(message, details) {
@@ -63,8 +73,39 @@ function setStatus(status) {
   else pingButton.setAttribute('disabled', '');
 }
 
+function toggleRoleSections(role) {
+  sidebarViews.forEach((section) => {
+    const view = section.dataset.roleView;
+    if (!view || view === 'ALL') {
+      section.hidden = false;
+      return;
+    }
+    const targets = view.split(',').map((v) => v.trim());
+    section.hidden = !role || !targets.includes(role);
+  });
+}
+
 function updateRole(role) {
-  roleEl.textContent = role ?? 'GUEST';
+  const fallback = ROLE_LABELS.GUEST;
+  if (!role) {
+    roleEl.textContent = fallback;
+    toggleRoleSections(null);
+    return;
+  }
+  roleEl.textContent = ROLE_LABELS[role] ?? fallback;
+  toggleRoleSections(role);
+}
+
+function displaySessionCode(code) {
+  if (code) {
+    sessionInfo.hidden = false;
+    sessionCodeButton.textContent = code;
+    sessionCodeButton.dataset.code = code;
+  } else {
+    sessionInfo.hidden = true;
+    sessionCodeButton.textContent = '—';
+    sessionCodeButton.dataset.code = '';
+  }
 }
 
 function resizeCanvas() {
@@ -81,8 +122,6 @@ const pendingPings = new Map();
 
 let socket = window.io('/ws', { autoConnect: false });
 
-// GM Login flow (modal)
-document.getElementById('gm-login-open').addEventListener('click', () => gmModal.open());
 document.getElementById('gm-login-btn').addEventListener('click', async () => {
   const passEl = document.getElementById('gm-password');
   const password = passEl.value.trim();
@@ -111,8 +150,6 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
   }
 });
 
-// Player Join flow (modal)
-document.getElementById('join-open').addEventListener('click', () => joinModal.open());
 document.getElementById('join-session-btn').addEventListener('click', () => {
   const nickname = document.getElementById('join-nickname').value.trim();
   const sessionId = document.getElementById('join-session').value.trim() || null;
@@ -122,6 +159,23 @@ document.getElementById('join-session-btn').addEventListener('click', () => {
   socket.auth = { nickname, sessionId };
   socket.connect();
 });
+
+if (sessionCodeButton) {
+  sessionCodeButton.addEventListener('click', async () => {
+    const code = sessionCodeButton.dataset.code;
+    if (!code) return;
+
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        throw new Error('Буфер обмена недоступен');
+      }
+      await navigator.clipboard.writeText(code);
+      logEvent('Код сессии скопирован в буфер обмена');
+    } catch (error) {
+      logEvent('Не удалось скопировать код сессии', error?.message ?? String(error));
+    }
+  });
+}
 
 const tokenFromStorage = localStorage.getItem('jwt');
 if (tokenFromStorage) {
@@ -151,6 +205,8 @@ socket.on('disconnect', (reason) => {
   setStatus('OFFLINE');
   logEvent(`Disconnected: ${reason}`);
   updateRole('GUEST');
+  displaySessionCode(null);
+  if (tabletopOverlay) tabletopOverlay.hidden = false;
   pendingPings.clear();
 });
 
@@ -170,7 +226,9 @@ socket.on('message', (envelope) => {
     case 'core.handshake:out': {
       const role = payload?.role ?? 'GUEST';
       updateRole(role);
-      logEvent('Handshake acknowledged', {
+      displaySessionCode(payload?.sessionId ?? null);
+      if (tabletopOverlay) tabletopOverlay.hidden = true;
+      logEvent('Рукопожатие подтверждено', {
         role,
         sessionId: payload?.sessionId ?? null,
         ts,
@@ -208,8 +266,10 @@ pingButton.addEventListener('click', () => {
     payload: { origin: 'frontend' },
   };
   socket.emit('message', envelope);
-  logEvent('Ping sent', { rid });
+  logEvent('Ping отправлен', { rid });
 });
 
-// Initial UI
 setStatus('OFFLINE');
+updateRole('GUEST');
+displaySessionCode(null);
+if (tabletopOverlay) tabletopOverlay.hidden = false;
