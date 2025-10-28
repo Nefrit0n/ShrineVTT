@@ -31,6 +31,34 @@ export default function createSessionsRouter({ sessionRepository, playerStateRep
 
   const router = Router();
 
+  router.get('/', (req, res) => {
+    const token = extractBearerToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    let user;
+    try {
+      user = jwt.verifyToken(token);
+    } catch (err) {
+      logger?.warn({ err }, 'Failed to verify token for listing sessions');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (user.role !== USER_ROLES.MASTER) {
+      return res.status(403).json({ error: 'Only MASTER can list sessions' });
+    }
+
+    const sessions = sessionRepository.listByMaster(user.id);
+    return res.json({
+      sessions: sessions.map((session) => ({
+        id: session.id,
+        code: session.code,
+        createdAt: session.createdAt,
+      })),
+    });
+  });
+
   router.post('/', (req, res) => {
     const token = extractBearerToken(req);
     if (!token) {
@@ -110,6 +138,44 @@ export default function createSessionsRouter({ sessionRepository, playerStateRep
       user: { id: userId, username, role },
       sessionId: session.id,
     });
+  });
+
+  router.delete('/:sessionId/members/me', (req, res) => {
+    const token = extractBearerToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    let user;
+    try {
+      user = jwt.verifyToken(token);
+    } catch (err) {
+      logger?.warn({ err }, 'Failed to verify token for leaving session');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (user.role !== USER_ROLES.PLAYER && user.role !== USER_ROLES.MASTER) {
+      return res.status(403).json({ error: 'Unsupported role' });
+    }
+
+    const { sessionId } = req.params;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'sessionId is required' });
+    }
+
+    const session = sessionRepository.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (user.role === USER_ROLES.PLAYER && user.sessionId && user.sessionId !== sessionId) {
+      return res.status(403).json({ error: 'Cannot leave a different session' });
+    }
+
+    const removed = sessionRepository.removeMember({ sessionId, userId: user.id });
+    logger?.info({ sessionId, userId: user.id, removed }, 'Member requested to leave session');
+
+    return res.status(204).end();
   });
 
   return router;
