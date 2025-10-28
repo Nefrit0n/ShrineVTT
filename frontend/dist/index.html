@@ -1,14 +1,15 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>ShrineVTT — Realm</title>
+  <title>ShrineVTT — Святилище</title>
 
-  <!-- Fantasy/RPG typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Unna:wght@400;700&family=Inter:wght@400;600;700&display=swap"
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Shippori+Mincho+B1:wght@500;600;700&display=swap"
     rel="stylesheet" />
 
   <link rel="stylesheet" href="./styles.css" />
@@ -16,111 +17,161 @@
 
 <body>
   <div class="page">
-    <!-- Sky/constellation background -->
-    <div class="bg"></div>
+    <div class="bg" aria-hidden="true"></div>
 
     <header class="topbar">
-      <div class="brand">
-        <span class="brand__crest">⟐</span>
-        <h1 class="brand__title">ShrineVTT</h1>
-        <span class="brand__subtitle">The Wayfarer’s Table</span>
+      <div class="brand" aria-label="ShrineVTT">
+        <span class="brand__crest" aria-hidden="true">⛩︎</span>
+        <div class="brand__lockup">
+          <h1 class="brand__title">ShrineVTT</h1>
+          <p class="brand__subtitle">Лунные хроники</p>
+        </div>
       </div>
 
       <div class="status">
-        <div class="status__item">
-          <span class="label">Status</span>
-          <span id="connection-status" class="pill pill--danger" title="WebSocket status">OFFLINE</span>
+        <div class="status__item status__item--connection">
+          <span class="status__icon" aria-hidden="true">☯︎</span>
+          <div class="status__stack">
+            <span class="label">Соединение</span>
+            <span id="connection-status" class="pill pill--danger" title="Состояние WebSocket">НЕ В СЕТИ</span>
+          </div>
         </div>
-        <div class="status__item">
-          <span class="label">Role</span>
-          <span id="role-indicator" class="pill">GUEST</span>
+        <div class="status__item status__item--role">
+          <span class="status__icon" aria-hidden="true">狐</span>
+          <div class="status__stack">
+            <span class="label">Роль</span>
+            <span id="role-indicator" class="pill">ГОСТЬ</span>
+          </div>
         </div>
       </div>
     </header>
 
-    <main class="layout">
-      <!-- Session panel -->
-      <aside class="panel panel--parchment panel--narrow">
-        <div class="panel__section">
-          <h2 class="panel__title">Session</h2>
-          <div class="stack">
-            <button id="gm-login-open" class="btn btn--primary">
-              Enter as Game Master
-            </button>
-            <button id="join-open" class="btn">Join as Adventurer</button>
-            <button id="ping-button" class="btn btn--ghost" disabled>
-              Send Ping
-            </button>
+    <main class="main">
+      <aside class="pillar">
+        <section class="pillar__section">
+          <header class="pillar__header">
+            <h2 class="pillar__title">Доступ к ритуалу</h2>
+            <p class="pillar__hint">Выберите, как войти в святилище.</p>
+          </header>
+          <div class="pillar__actions">
+            <button id="gm-login-open" class="btn btn--primary">Призвать печать Мастера</button>
+            <button id="join-open" class="btn btn--secondary">Войти в круг</button>
+            <button id="ping-button" class="btn btn--ghost" disabled>Отправить духовный пинг</button>
           </div>
-        </div>
+        </section>
 
-        <div class="panel__section">
-          <h3 class="panel__subtitle">Event Log</h3>
-          <div id="log-entries" class="log"></div>
-        </div>
+        <section class="pillar__section">
+          <header class="pillar__header">
+            <h2 class="pillar__title">Поле битвы</h2>
+            <p class="pillar__hint">Здесь появятся печати карты, туман и команды для жетонов.</p>
+          </header>
+          <ul class="tool-list">
+            <li class="tool-list__item">
+              <span class="tool-list__label">Защитная решётка</span>
+              <span class="tool-list__meta">Ожидает сигилов</span>
+            </li>
+            <li class="tool-list__item">
+              <span class="tool-list__label">Призванные жетоны</span>
+              <span class="tool-list__meta">Готовы к духам</span>
+            </li>
+            <li class="tool-list__item">
+              <span class="tool-list__label">Реестр инициативы</span>
+              <span class="tool-list__meta">Обряд костей впереди</span>
+            </li>
+            <li class="tool-list__item">
+              <span class="tool-list__label">Пелена Мастера</span>
+              <span class="tool-list__meta">Тайны сокрыты</span>
+            </li>
+          </ul>
+        </section>
+
+        <section class="pillar__section pillar__section--grow">
+          <header class="pillar__header">
+            <h2 class="pillar__title">Быстрые заметки</h2>
+            <p class="pillar__hint">Запишите знак, улику или клятву.</p>
+          </header>
+          <div class="scribe">
+            <div class="scribe__sheet" aria-hidden="true"></div>
+            <p class="scribe__placeholder">Здесь появятся будущие хроники.</p>
+          </div>
+        </section>
       </aside>
 
-      <!-- Scene canvas -->
-      <section class="scene">
-        <canvas id="scene-canvas" class="scene__canvas" aria-label="Scene"></canvas>
-        <div class="scene__frame"></div>
+      <section class="board" aria-label="Игровое поле">
+        <div class="board__frame">
+          <canvas id="scene-canvas" class="board__canvas" aria-label="Полотно сцены"></canvas>
+          <div class="board__overlay" aria-hidden="true">
+            <div class="board__grid-hint">Управление сеткой и туманом проявится в будущих ритуалах.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="chronicle" aria-label="Хроника событий">
+        <header class="chronicle__header">
+          <span class="chronicle__seal" aria-hidden="true">❖</span>
+          <h2 class="chronicle__title">Хроника отголосков</h2>
+          <span class="chronicle__seal chronicle__seal--right" aria-hidden="true">❖</span>
+        </header>
+        <div id="log-entries" class="chronicle__log" aria-live="polite"></div>
       </section>
     </main>
   </div>
 
-  <!-- Modal: GM Login -->
-  <div id="modal-gm" class="modal" aria-hidden="true">
+  <div id="modal-gm" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal__backdrop" data-close></div>
-    <div class="modal__dialog panel panel--parchment">
+    <div class="modal__dialog">
       <header class="modal__header">
-        <h3 class="panel__title">Game Master’s Seal</h3>
-        <button class="modal__close" title="Close" data-close>✕</button>
+        <span class="modal__glyph" aria-hidden="true">☾</span>
+        <div>
+          <h3 class="modal__title">Печать Мастера игры</h3>
+          <p class="modal__subtitle">Произнесите клятвенную фразу, чтобы управлять святилищем.</p>
+        </div>
+        <button class="modal__close" title="Закрыть" data-close aria-label="Закрыть">✕</button>
       </header>
       <div class="modal__body">
         <label class="field">
-          <span class="field__label">Password</span>
-          <input id="gm-password" class="field__input" type="password" placeholder="Enter GM password"
+          <span class="field__label">Пароль</span>
+          <input id="gm-password" class="field__input" type="password" placeholder="Введите пароль Мастера"
             autocomplete="current-password" />
         </label>
-        <div class="hint">
-          This password is configured by the host of the realm.
-        </div>
+        <p class="hint">Его задаёт хранитель этого мира. Делитесь осмотрительно.</p>
       </div>
       <footer class="modal__footer">
-        <button class="btn btn--ghost" data-close>Cancel</button>
-        <button id="gm-login-btn" class="btn btn--primary">Enter</button>
+        <button class="btn btn--ghost" data-close>Отмена</button>
+        <button id="gm-login-btn" class="btn btn--primary">Активировать печать</button>
       </footer>
     </div>
   </div>
 
-  <!-- Modal: Join Session -->
-  <div id="modal-join" class="modal" aria-hidden="true">
+  <div id="modal-join" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal__backdrop" data-close></div>
-    <div class="modal__dialog panel panel--parchment">
+    <div class="modal__dialog">
       <header class="modal__header">
-        <h3 class="panel__title">Join the Party</h3>
-        <button class="modal__close" title="Close" data-close>✕</button>
+        <span class="modal__glyph" aria-hidden="true">☽</span>
+        <div>
+          <h3 class="modal__title">Войти в круг</h3>
+          <p class="modal__subtitle">Назовите свой дух и укажите сигил сессии.</p>
+        </div>
+        <button class="modal__close" title="Закрыть" data-close aria-label="Закрыть">✕</button>
       </header>
-      <div class="modal__body grid grid--2">
+      <div class="modal__body modal__body--grid">
         <label class="field">
-          <span class="field__label">Nickname</span>
-          <input id="join-nickname" class="field__input" type="text" placeholder="e.g., Nefriton" maxlength="32" />
+          <span class="field__label">Имя духа</span>
+          <input id="join-nickname" class="field__input" type="text" placeholder="например, Нэфритон" maxlength="32" />
         </label>
         <label class="field">
-          <span class="field__label">Session Code</span>
-          <input id="join-session" class="field__input" type="text" placeholder="e.g., ABR7" maxlength="24" />
+          <span class="field__label">Код сессии</span>
+          <input id="join-session" class="field__input" type="text" placeholder="например, ABR7" maxlength="24" />
         </label>
       </div>
       <footer class="modal__footer">
-        <button class="btn btn--ghost" data-close>Cancel</button>
-        <button id="join-session-btn" class="btn btn--primary">Join</button>
+        <button class="btn btn--ghost" data-close>Отмена</button>
+        <button id="join-session-btn" class="btn btn--primary">Войти в ритуал</button>
       </footer>
     </div>
   </div>
 
-  <!-- Socket.io runtime -->
   <script src="/socket.io/socket.io.js"></script>
-  <!-- App -->
   <script type="module" src="./app.js"></script>
 </body>
 

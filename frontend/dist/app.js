@@ -30,6 +30,17 @@ const STATUS_CLASSES = {
   OFFLINE: 'pill--danger',
 };
 
+const STATUS_LABELS = {
+  ONLINE: 'В СЕТИ',
+  OFFLINE: 'НЕ В СЕТИ',
+};
+
+const ROLE_LABELS = {
+  MASTER: 'МАСТЕР',
+  PLAYER: 'ИГРОК',
+  GUEST: 'ГОСТЬ',
+};
+
 function logEvent(message, details) {
   const entry = document.createElement('article');
   entry.className = 'log-entry';
@@ -56,7 +67,8 @@ function logEvent(message, details) {
 }
 
 function setStatus(status) {
-  statusEl.textContent = status;
+  const label = STATUS_LABELS[status] ?? STATUS_LABELS.OFFLINE;
+  statusEl.textContent = label;
   statusEl.classList.remove(STATUS_CLASSES.ONLINE, STATUS_CLASSES.OFFLINE);
   statusEl.classList.add(STATUS_CLASSES[status] ?? STATUS_CLASSES.OFFLINE);
   if (status === 'ONLINE') pingButton.removeAttribute('disabled');
@@ -64,7 +76,8 @@ function setStatus(status) {
 }
 
 function updateRole(role) {
-  roleEl.textContent = role ?? 'GUEST';
+  const label = ROLE_LABELS[role] ?? ROLE_LABELS.GUEST;
+  roleEl.textContent = label;
 }
 
 function resizeCanvas() {
@@ -96,7 +109,7 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
     });
 
     if (!res.ok) {
-      logEvent('GM login failed');
+      logEvent('Не удалось войти как Мастер');
       return;
     }
 
@@ -107,7 +120,7 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
     socket.auth = { token };
     socket.connect();
   } catch (err) {
-    logEvent('GM login error', err?.message ?? String(err));
+    logEvent('Ошибка входа Мастера', err?.message ?? String(err));
   }
 });
 
@@ -144,24 +157,24 @@ socket.on('connect', () => {
   };
 
   socket.emit('message', envelope);
-  logEvent('Handshake sent', envelope);
+  logEvent('Рукопожатие отправлено', envelope);
 });
 
 socket.on('disconnect', (reason) => {
   setStatus('OFFLINE');
-  logEvent(`Disconnected: ${reason}`);
+  logEvent(`Отключено: ${reason}`);
   updateRole('GUEST');
   pendingPings.clear();
 });
 
 socket.on('connect_error', (error) => {
   setStatus('OFFLINE');
-  logEvent('Connection error', error?.message ?? error);
+  logEvent('Ошибка соединения', error?.message ?? error);
 });
 
 socket.on('message', (envelope) => {
   if (!envelope || typeof envelope !== 'object') {
-    logEvent('Received malformed envelope');
+    logEvent('Получен повреждённый конверт');
     return;
   }
 
@@ -170,7 +183,7 @@ socket.on('message', (envelope) => {
     case 'core.handshake:out': {
       const role = payload?.role ?? 'GUEST';
       updateRole(role);
-      logEvent('Handshake acknowledged', {
+      logEvent('Рукопожатие подтверждено', {
         role,
         sessionId: payload?.sessionId ?? null,
         ts,
@@ -182,16 +195,16 @@ socket.on('message', (envelope) => {
       const started = pendingPings.get(rid);
       pendingPings.delete(rid);
       const latency = started !== undefined ? (performance.now() - started).toFixed(1) : null;
-      logEvent('Pong received', {
+      logEvent('Получен отклик', {
         rid,
-        latency: latency ? `${latency} ms` : 'n/a',
+        latency: latency ? `${latency} ms` : 'н/д',
         payloadTs: payload?.ts,
         ts,
       });
       break;
     }
     default:
-      logEvent(`Received envelope: ${type}`, envelope);
+      logEvent(`Получен конверт: ${type}`, envelope);
   }
 });
 
@@ -208,7 +221,7 @@ pingButton.addEventListener('click', () => {
     payload: { origin: 'frontend' },
   };
   socket.emit('message', envelope);
-  logEvent('Ping sent', { rid });
+  logEvent('Пинг отправлен', { rid });
 });
 
 // Initial UI
