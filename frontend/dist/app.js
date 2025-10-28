@@ -40,17 +40,6 @@ const STATUS_CLASSES = {
   OFFLINE: 'status-pill--danger',
 };
 
-const STATUS_LABELS = {
-  ONLINE: 'В сети',
-  OFFLINE: 'Не в сети',
-};
-
-const ROLE_LABELS = {
-  MASTER: 'Мастер',
-  PLAYER: 'Игрок',
-  GUEST: 'Гость',
-};
-
 function logEvent(message, details) {
   const entry = document.createElement('article');
   entry.className = 'log-entry';
@@ -77,7 +66,7 @@ function logEvent(message, details) {
 }
 
 function setStatus(status) {
-  statusEl.textContent = STATUS_LABELS[status] ?? status;
+  statusEl.textContent = status;
   statusEl.classList.remove(STATUS_CLASSES.ONLINE, STATUS_CLASSES.OFFLINE);
   statusEl.classList.add(STATUS_CLASSES[status] ?? STATUS_CLASSES.OFFLINE);
   if (status === 'ONLINE') pingButton.removeAttribute('disabled');
@@ -146,7 +135,7 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
     });
 
     if (!res.ok) {
-      logEvent('Не удалось войти как мастер');
+      logEvent('GM login failed');
       return;
     }
 
@@ -157,7 +146,7 @@ document.getElementById('gm-login-btn').addEventListener('click', async () => {
     socket.auth = { token };
     socket.connect();
   } catch (err) {
-    logEvent('Сбой входа мастера', err?.message ?? String(err));
+    logEvent('GM login error', err?.message ?? String(err));
   }
 });
 
@@ -209,12 +198,12 @@ socket.on('connect', () => {
   };
 
   socket.emit('message', envelope);
-  logEvent('Рукопожатие отправлено', envelope);
+  logEvent('Handshake sent', envelope);
 });
 
 socket.on('disconnect', (reason) => {
   setStatus('OFFLINE');
-  logEvent(`Отключение: ${reason}`);
+  logEvent(`Disconnected: ${reason}`);
   updateRole('GUEST');
   displaySessionCode(null);
   if (tabletopOverlay) tabletopOverlay.hidden = false;
@@ -223,12 +212,12 @@ socket.on('disconnect', (reason) => {
 
 socket.on('connect_error', (error) => {
   setStatus('OFFLINE');
-  logEvent('Ошибка соединения', error?.message ?? error);
+  logEvent('Connection error', error?.message ?? error);
 });
 
 socket.on('message', (envelope) => {
   if (!envelope || typeof envelope !== 'object') {
-    logEvent('Получен некорректный пакет');
+    logEvent('Received malformed envelope');
     return;
   }
 
@@ -251,16 +240,16 @@ socket.on('message', (envelope) => {
       const started = pendingPings.get(rid);
       pendingPings.delete(rid);
       const latency = started !== undefined ? (performance.now() - started).toFixed(1) : null;
-      logEvent('Получен отклик', {
+      logEvent('Pong received', {
         rid,
-        latency: latency ? `${latency} мс` : 'н/д',
+        latency: latency ? `${latency} ms` : 'n/a',
         payloadTs: payload?.ts,
         ts,
       });
       break;
     }
     default:
-      logEvent(`Получен пакет: ${type}`, envelope);
+      logEvent(`Received envelope: ${type}`, envelope);
   }
 });
 

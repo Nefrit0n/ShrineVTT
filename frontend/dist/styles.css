@@ -82,6 +82,7 @@ button {
 
 .header-primary {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 40px;
 }
@@ -443,9 +444,8 @@ button {
   position: fixed;
   inset: 0;
   display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
+  place-items: center;
+  z-index: 50;
 }
 
 .modal[data-open='true'] {
