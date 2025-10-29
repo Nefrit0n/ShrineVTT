@@ -53,14 +53,18 @@
             Загрузить сессию
           </button>
           <div id="session-chip" class="session-chip" hidden>
-            <span class="session-chip__label">Код</span>
-            <span id="session-code" class="session-chip__code">—</span>
-            <button id="session-copy-btn" class="session-chip__action" type="button">Копировать</button>
-            <button id="session-invite-btn" class="session-chip__action" type="button">Ссылка-приглашение</button>
+            <div class="session-chip__info">
+              <span class="session-chip__label">Код</span>
+              <span id="session-code" class="session-chip__code">—</span>
+            </div>
+            <div class="session-chip__actions">
+              <button id="session-copy-btn" class="session-chip__action" type="button">Копировать</button>
+              <button id="session-invite-btn" class="session-chip__action" type="button">Пригласить</button>
+              <button id="leave-session-btn" class="session-chip__action" type="button">
+                Выйти из сессии
+              </button>
+            </div>
           </div>
-          <button id="leave-session-btn" class="btn btn--ghost session-controls__action" type="button" hidden>
-            Покинуть сессию
-          </button>
           <button id="logout-btn" class="btn btn--ghost session-controls__action" type="button" hidden>
             Выйти из роли
           </button>
