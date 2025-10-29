@@ -3,7 +3,7 @@ import 'https://cdn.jsdelivr.net/npm/@pixi/unsafe-eval@7.4.0/+esm';
 import GridLayer from './GridLayer.js';
 import MapLayer from './MapLayer.js';
 import TokensLayer from './TokensLayer.js';
-import { clampZoom, getSceneDimensions, sceneToViewScale, cellToCanvas } from './coords.js';
+import { clampZoom, getSceneDimensions, sceneToViewScale, worldFromCell } from './coords.js';
 
 const DEFAULT_BACKGROUND = 0x070b11;
 const DRAG_BUTTON = 0;
@@ -23,6 +23,7 @@ export default class PixiStage {
       eventMode: 'passive',
     });
 
+    app.stage.sortableChildren = true;
     app.resizeTo = canvas.parentElement ?? window;
 
     return new PixiStage({ app, canvas });
@@ -38,7 +39,8 @@ export default class PixiStage {
 
     this.gridLayer = new GridLayer();
     this.mapLayer = new MapLayer({ fallbackColor: 0x0d1119 });
-    this.tokensLayer = new TokensLayer();
+    this.tokensLayer = new TokensLayer({ app: this.app });
+    this.tokensLayer.container.zIndex = 100;
 
     this.container.addChild(this.mapLayer.container);
     this.container.addChild(this.gridLayer.container);
@@ -56,6 +58,7 @@ export default class PixiStage {
     this.maxZoom = 4;
     this.canControlToken = () => false;
     this.tokenMoveRequestHandler = null;
+    this.userContext = { isGM: false, userId: null };
 
     this.dragState = {
       active: false,
@@ -70,6 +73,7 @@ export default class PixiStage {
       canMoveToken: (token) => this.canControlToken(token),
       onMoveRequest: (move) => this.handleTokenMoveRequest(move),
       throttleMs: 50,
+      userContext: this.userContext,
     });
 
     this.handlePointerDown = this.handlePointerDown.bind(this);
@@ -126,6 +130,8 @@ export default class PixiStage {
       gridSize: scene.gridSize,
       columns: Number.isFinite(columns) && columns > 0 ? columns : 0,
       rows: Number.isFinite(rows) && rows > 0 ? rows : 0,
+      widthPx: scene.widthPx,
+      heightPx: scene.heightPx,
     });
     this.tokensLayer.setTokens(tokens, { gridSize: scene.gridSize });
     this.gridSize = this.tokensLayer.getGridSize();
@@ -189,13 +195,35 @@ export default class PixiStage {
     return true;
   }
 
-  setTokenMoveHandler({ canMoveToken, requestMove } = {}) {
-    this.canControlToken = typeof canMoveToken === 'function' ? canMoveToken : () => false;
+  setTokenMoveHandler({ canMoveToken, requestMove, userContext } = {}) {
+    this.userContext = {
+      isGM: Boolean(userContext?.isGM),
+      userId: userContext?.userId ?? null,
+    };
+
+    if (typeof canMoveToken === 'function') {
+      this.canControlToken = canMoveToken;
+    } else {
+      this.canControlToken = (token) => {
+        if (!token) {
+          return false;
+        }
+        if (this.userContext.isGM) {
+          return true;
+        }
+        if (!this.userContext.userId) {
+          return false;
+        }
+        return token.ownerUserId === this.userContext.userId;
+      };
+    }
+
     this.tokenMoveRequestHandler = typeof requestMove === 'function' ? requestMove : null;
     this.tokensLayer.setInteractionOptions({
       canMoveToken: (token) => this.canControlToken(token),
       onMoveRequest: (move) => this.handleTokenMoveRequest(move),
       throttleMs: 50,
+      userContext: this.userContext,
     });
   }
 
@@ -264,14 +292,13 @@ export default class PixiStage {
 
     const scale = this.container.scale?.x ?? 1;
     const size = gridSize * scale;
-    const baseX = cellToCanvas(token?.xCell ?? 0, gridSize);
-    const baseY = cellToCanvas(token?.yCell ?? 0, gridSize);
+    const center = worldFromCell({ xCell: token?.xCell ?? 0, yCell: token?.yCell ?? 0 }, gridSize);
     const offsetX = this.container.position?.x ?? 0;
     const offsetY = this.container.position?.y ?? 0;
 
     return {
-      x: offsetX + baseX * scale,
-      y: offsetY + baseY * scale,
+      x: offsetX + center.x * scale - size / 2,
+      y: offsetY + center.y * scale - size / 2,
       size,
     };
   }
