@@ -140,6 +140,49 @@ export default function createSessionsRouter({ sessionRepository, playerStateRep
     });
   });
 
+  router.get('/:sessionId/members', (req, res) => {
+    const token = extractBearerToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    let user;
+    try {
+      user = jwt.verifyToken(token);
+    } catch (err) {
+      logger?.warn({ err }, 'Failed to verify token for listing session members');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (user.role !== USER_ROLES.MASTER) {
+      return res.status(403).json({ error: 'Only MASTER can list session members' });
+    }
+
+    const { sessionId } = req.params;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'sessionId is required' });
+    }
+
+    const session = sessionRepository.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (session.masterUserId && user.id !== session.masterUserId) {
+      return res.status(403).json({ error: 'Only session master can list members' });
+    }
+
+    const members = sessionRepository.listMembers(sessionId);
+    return res.json({
+      members: members.map((member) => ({
+        userId: member.userId,
+        username: member.username,
+        role: member.role,
+        joinedAt: member.joinedAt,
+      })),
+    });
+  });
+
   router.delete('/:sessionId/members/me', (req, res) => {
     const token = extractBearerToken(req);
     if (!token) {

@@ -2,15 +2,18 @@ import log from '../../log.js';
 import db from '../../infra/db/sqlite.js';
 import SceneRepository from '../../infra/repositories/SceneRepository.js';
 import TokenRepository from '../../infra/repositories/TokenRepository.js';
+import SessionRepository from '../../infra/repositories/SessionRepository.js';
 import {
   executeCommand,
   registerTokenCreateCommand,
   registerTokenMoveCommand,
+  registerTokenAssignOwnerCommand,
 } from '../../application/commands/index.js';
 import { DomainError } from '../../errors.js';
 
 const sceneRepository = new SceneRepository(db);
 const tokenRepository = new TokenRepository(db);
+const sessionRepository = new SessionRepository(db);
 
 let commandsRegistered = false;
 
@@ -21,6 +24,12 @@ function ensureTokenCommandsRegistered(logger) {
 
   registerTokenCreateCommand({ sceneRepository, tokenRepository, logger });
   registerTokenMoveCommand({ sceneRepository, tokenRepository, logger });
+  registerTokenAssignOwnerCommand({
+    sceneRepository,
+    tokenRepository,
+    sessionRepository,
+    logger,
+  });
   commandsRegistered = true;
 }
 
@@ -46,12 +55,21 @@ const TOKEN_COMMAND_MAP = {
     successType: 'token.create:out',
     errorType: 'token.create:error',
     fallbackError: 'Не удалось создать жетон.',
+    logErrorMessage: 'Failed to create token',
   },
   'token.move:in': {
     command: 'token.move',
     successType: 'token.move:out',
     errorType: 'token.move:error',
     fallbackError: 'Не удалось переместить жетон.',
+    logErrorMessage: 'Failed to move token',
+  },
+  'token.assignOwner:in': {
+    command: 'token.assignOwner',
+    successType: 'token.assignOwner:out',
+    errorType: 'token.assignOwner:error',
+    fallbackError: 'Не удалось назначить владельца жетона.',
+    logErrorMessage: 'Failed to assign token owner',
   },
 };
 
@@ -122,6 +140,19 @@ export default function registerTokenHandlers(namespace, { logger = log } = {}) 
             },
             'Token moved via WS',
           );
+        } else if (commandConfig.command === 'token.assignOwner') {
+          const tokenId = result?.token?.id ?? payload?.tokenId ?? null;
+          logger.info(
+            {
+              rid,
+              userId: actorUserId,
+              role: actorRole,
+              sessionId,
+              tokenId,
+              ownerUserId: result?.token?.ownerUserId ?? payload?.ownerUserId ?? null,
+            },
+            'Token owner assigned via WS',
+          );
         }
       } catch (err) {
         const errorMessage = normalizeErrorMessage(err, commandConfig.fallbackError);
@@ -137,7 +168,7 @@ export default function registerTokenHandlers(namespace, { logger = log } = {}) 
             rid,
             username: socket.data?.username ?? null,
           },
-          commandConfig.command === 'token.move' ? 'Failed to move token' : 'Failed to create token',
+          commandConfig.logErrorMessage ?? 'Failed to execute token command',
         );
 
         socket.emit('message', {
