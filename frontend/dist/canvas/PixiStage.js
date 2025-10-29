@@ -24,7 +24,7 @@ export default class PixiStage {
     });
 
     app.stage.sortableChildren = true;
-    app.resizeTo = canvas.parentElement ?? window;
+    app.resizeTo = null;
 
     return new PixiStage({ app, canvas });
   }
@@ -58,7 +58,7 @@ export default class PixiStage {
     this.maxZoom = 4;
     this.canControlToken = () => false;
     this.tokenMoveRequestHandler = null;
-    this.userContext = { isGM: false, userId: null };
+    this.userContext = { isGM: false, userId: null, canDragTokens: false };
 
     this.dragState = {
       active: false,
@@ -70,6 +70,9 @@ export default class PixiStage {
     };
 
     this.pointerPosition = new Point();
+    this.resizeObserver = null;
+    this.resizeTarget = this.canvas?.parentElement ?? null;
+    this.windowResizeListenerAttached = false;
 
     this.tokensLayer.setInteractionOptions({
       canMoveToken: (token) => this.canControlToken(token),
@@ -90,7 +93,7 @@ export default class PixiStage {
     window.addEventListener('pointercancel', this.handlePointerUp);
     window.addEventListener('pointerleave', this.handlePointerUp);
     this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
-    window.addEventListener('resize', this.handleResize);
+    this.setupResizeHandling();
   }
 
   destroy() {
@@ -100,11 +103,43 @@ export default class PixiStage {
     window.removeEventListener('pointercancel', this.handlePointerUp);
     window.removeEventListener('pointerleave', this.handlePointerUp);
     this.canvas.removeEventListener('wheel', this.handleWheel);
-    window.removeEventListener('resize', this.handleResize);
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    if (this.windowResizeListenerAttached) {
+      window.removeEventListener('resize', this.handleResize);
+      this.windowResizeListenerAttached = false;
+    }
     if (this.app) {
       this.app.resizeTo = null;
     }
     this.app.destroy();
+  }
+
+  setupResizeHandling() {
+    this.resizeTarget = this.canvas?.parentElement ?? this.canvas ?? null;
+
+    if (typeof ResizeObserver === 'function' && this.resizeTarget) {
+      this.resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.target === this.resizeTarget) {
+            this.handleResize({ width: entry.contentRect.width, height: entry.contentRect.height });
+          }
+        }
+      });
+      this.resizeObserver.observe(this.resizeTarget);
+      const rect = this.resizeTarget.getBoundingClientRect?.();
+      if (rect && rect.width && rect.height) {
+        this.handleResize({ width: rect.width, height: rect.height });
+      } else {
+        this.handleResize();
+      }
+    } else {
+      window.addEventListener('resize', this.handleResize);
+      this.windowResizeListenerAttached = true;
+      this.handleResize();
+    }
   }
 
   async loadSnapshot(snapshot) {
@@ -198,9 +233,17 @@ export default class PixiStage {
   }
 
   setTokenMoveHandler({ canMoveToken, requestMove, userContext } = {}) {
+    const canDragTokens =
+      userContext && Object.prototype.hasOwnProperty.call(userContext, 'canDragTokens')
+        ? Boolean(userContext.canDragTokens)
+        : userContext?.isGM
+        ? false
+        : true;
+
     this.userContext = {
       isGM: Boolean(userContext?.isGM),
       userId: userContext?.userId ?? null,
+      canDragTokens,
     };
 
     if (typeof canMoveToken === 'function') {
@@ -211,7 +254,7 @@ export default class PixiStage {
           return false;
         }
         if (this.userContext.isGM) {
-          return true;
+          return Boolean(this.userContext.canDragTokens);
         }
         if (!this.userContext.userId) {
           return false;
@@ -397,7 +440,11 @@ export default class PixiStage {
       return;
     }
 
-    if (this.isPointerOverToken(event)) {
+    const canDragTokens = this.userContext.isGM
+      ? Boolean(this.userContext.canDragTokens)
+      : true;
+
+    if (canDragTokens && this.isPointerOverToken(event)) {
       return;
     }
 
@@ -466,11 +513,31 @@ export default class PixiStage {
     this.container.position.set(nextX, nextY);
   }
 
-  handleResize() {
-    if (!this.sceneWidth || !this.sceneHeight) {
-      return;
+  handleResize(dimensions = {}) {
+    const target = this.resizeTarget ?? this.canvas?.parentElement ?? this.canvas ?? null;
+
+    let width = Number.isFinite(dimensions.width) ? dimensions.width : null;
+    let height = Number.isFinite(dimensions.height) ? dimensions.height : null;
+
+    if ((!Number.isFinite(width) || width <= 0) && target) {
+      width = target.clientWidth ?? target.offsetWidth ?? this.canvas?.clientWidth ?? 0;
     }
 
-    this.fitToView();
+    if ((!Number.isFinite(height) || height <= 0) && target) {
+      height = target.clientHeight ?? target.offsetHeight ?? this.canvas?.clientHeight ?? 0;
+    }
+
+    const safeWidth = Number.isFinite(width) && width > 0 ? width : window.innerWidth || 0;
+    const safeHeight = Number.isFinite(height) && height > 0 ? height : window.innerHeight || 0;
+
+    if (this.app?.renderer?.resize) {
+      this.app.renderer.resize(safeWidth, safeHeight);
+    }
+
+    if (this.sceneWidth && this.sceneHeight) {
+      this.fitToView();
+    } else {
+      this.resetView();
+    }
   }
 }

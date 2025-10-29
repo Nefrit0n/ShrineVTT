@@ -18,12 +18,25 @@ function sanitizeUsername(raw) {
   return trimmed.slice(0, 32);
 }
 
-export default function createSessionsRouter({ sessionRepository, playerStateRepository, jwt, logger }) {
+export default function createSessionsRouter({
+  sessionRepository,
+  userRepository,
+  playerStateRepository,
+  tokenRepository,
+  jwt,
+  logger,
+}) {
   if (!sessionRepository) {
     throw new Error('sessionRepository dependency is required');
   }
+  if (!userRepository) {
+    throw new Error('userRepository dependency is required');
+  }
   if (!playerStateRepository) {
     throw new Error('playerStateRepository dependency is required');
+  }
+  if (!tokenRepository) {
+    throw new Error('tokenRepository dependency is required');
   }
   if (!jwt) {
     throw new Error('jwt dependency is required');
@@ -107,35 +120,86 @@ export default function createSessionsRouter({ sessionRepository, playerStateRep
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    const existingMember = sessionRepository.findMemberByUsername(session.id, username);
-    const role = USER_ROLES.PLAYER;
-    const userId = existingMember?.userId ?? crypto.randomUUID();
+    let userRecord;
+    try {
+      userRecord = userRepository.ensurePlayerUser(username);
+    } catch (err) {
+      logger?.error({ err, username }, 'Failed to ensure player user');
+      return res.status(500).json({ error: 'Не удалось сохранить игрока' });
+    }
 
-    if (existingMember) {
-      sessionRepository.touchMember({ sessionId: session.id, userId });
+    const normalizedUsername = userRecord?.username ?? username;
+    const userId = userRecord?.id ?? crypto.randomUUID();
+    const role = USER_ROLES.PLAYER;
+
+    const existingMember = sessionRepository.findMemberByUsername(session.id, normalizedUsername);
+
+    if (existingMember?.userId) {
+      if (existingMember.userId === userId) {
+        sessionRepository.touchMember({ sessionId: session.id, userId });
+      } else {
+        const previousUserId = existingMember.userId;
+
+        try {
+          if (typeof playerStateRepository.reassignUserState === 'function') {
+            playerStateRepository.reassignUserState({
+              sessionId: session.id,
+              fromUserId: previousUserId,
+              toUserId: userId,
+              username: normalizedUsername,
+            });
+          }
+        } catch (err) {
+          logger?.warn(
+            { err, sessionId: session.id, fromUserId: previousUserId, toUserId: userId },
+            'Failed to reassign player state to persistent user',
+          );
+        }
+
+        try {
+          if (typeof tokenRepository.reassignOwner === 'function') {
+            tokenRepository.reassignOwner({
+              sessionId: session.id,
+              fromUserId: previousUserId,
+              toUserId: userId,
+            });
+          }
+        } catch (err) {
+          logger?.warn(
+            { err, sessionId: session.id, fromUserId: previousUserId, toUserId: userId },
+            'Failed to reassign token ownership to persistent user',
+          );
+        }
+
+        sessionRepository.removeMember({ sessionId: session.id, userId: previousUserId });
+      }
     }
 
     sessionRepository.upsertMember({
       sessionId: session.id,
       userId,
       role,
-      username,
+      username: normalizedUsername,
     });
 
-    playerStateRepository.ensurePlayerState({ sessionId: session.id, userId, username });
+    playerStateRepository.ensurePlayerState({
+      sessionId: session.id,
+      userId,
+      username: normalizedUsername,
+    });
 
     const token = jwt.signUser({
       id: userId,
-      username,
+      username: normalizedUsername,
       role,
       sessionId: session.id,
     });
 
-    logger?.info({ sessionId: session.id, username }, 'Player joined session');
+    logger?.info({ sessionId: session.id, username: normalizedUsername }, 'Player joined session');
 
     return res.json({
       token,
-      user: { id: userId, username, role },
+      user: { id: userId, username: normalizedUsername, role },
       sessionId: session.id,
     });
   });

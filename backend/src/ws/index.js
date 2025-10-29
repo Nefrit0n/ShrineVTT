@@ -9,7 +9,7 @@ const WS_NAMESPACE = '/ws';
 
 export default function createWsServer(
   httpServer,
-  { logger = log, jwt, sessionService, sceneQueries } = {},
+  { logger = log, jwt, sessionService, sceneQueries, userRepository } = {},
 ) {
   const io = new Server(httpServer, {
     cors: {
@@ -20,7 +20,7 @@ export default function createWsServer(
 
   const namespace = io.of(WS_NAMESPACE);
 
-  registerWsMiddleware(namespace, { logger, jwt });
+  registerWsMiddleware(namespace, { logger, jwt, userRepository });
   namespace.on('connection', (socket) => {
     const { sessionId } = socket.data || {};
     if (sessionId) {
