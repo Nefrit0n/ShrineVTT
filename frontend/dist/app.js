@@ -40,6 +40,28 @@ const sceneGridInput = document.getElementById('scene-grid-input');
 const sceneWidthInput = document.getElementById('scene-width-input');
 const sceneHeightInput = document.getElementById('scene-height-input');
 
+const gmTokensToolsItem = Array.from(document.querySelectorAll('.tool-list__item')).find((item) => {
+  const label = item?.querySelector?.('.tool-list__label');
+  if (!label) return false;
+  return label.textContent?.includes('Жетоны игроков');
+});
+
+let tokenForm = null;
+let tokenNameInput = null;
+let tokenXInput = null;
+let tokenYInput = null;
+let tokenSubmitBtn = null;
+let tokenStatusEl = null;
+
+const tokenToolsState = {
+  isSubmitting: false,
+  statusVariant: 'idle',
+  statusResetTimeoutId: null,
+};
+
+const pendingTokenCreates = new Map();
+const pendingTokenMoves = new Map();
+
 const JOURNAL_SAVE_DEBOUNCE = 800;
 const JOURNAL_STATUS_CLASSES = [
   'journal__status--idle',
@@ -75,6 +97,7 @@ const sceneFormState = {
 
 const canvasState = {
   activeSceneId: null,
+  gridSize: null,
   isLoading: false,
 };
 
@@ -107,6 +130,7 @@ let currentRole = 'GUEST';
 let isConnected = false;
 let currentSessionId = null;
 let currentSessionCode = null;
+let currentUserId = null;
 let socket = null;
 
 body.dataset.role = currentRole.toLowerCase();
@@ -137,16 +161,97 @@ async function ensurePixiStage() {
   if (!canvas) return null;
   if (pixiStage) return pixiStage;
   if (!pixiStagePromise) {
-    pixiStagePromise = PixiStage.create({ canvas }).then((stage) => {
-      pixiStage = stage;
-      return stage;
-    }).catch((err) => {
-      pixiStagePromise = null;
-      logEvent('Не удалось инициализировать полотно', err?.message ?? String(err));
-      return null;
-    });
+    pixiStagePromise = PixiStage.create({ canvas })
+      .then((stage) => {
+        pixiStage = stage;
+        stage.setTokenMoveHandler({
+          canMoveToken: canCurrentUserMoveToken,
+          requestMove: handleStageTokenMoveRequest,
+        });
+        return stage;
+      })
+      .catch((err) => {
+        pixiStagePromise = null;
+        logEvent('Не удалось инициализировать полотно', err?.message ?? String(err));
+        return null;
+      });
   }
   return pixiStagePromise;
+}
+
+function canCurrentUserMoveToken(token) {
+  if (!token || typeof token !== 'object') {
+    return false;
+  }
+
+  if (!socket || !socket.connected) {
+    return false;
+  }
+
+  if (!currentSessionId || !canvasState.activeSceneId) {
+    return false;
+  }
+
+  if (currentRole === 'MASTER') {
+    return true;
+  }
+
+  if (currentRole === 'PLAYER') {
+    if (!currentUserId) {
+      return false;
+    }
+    return token.ownerUserId === currentUserId;
+  }
+
+  return false;
+}
+
+async function updateStageMovePermissions() {
+  const stage = await ensurePixiStage();
+  if (!stage) {
+    return;
+  }
+  stage.setTokenMoveHandler({
+    canMoveToken: canCurrentUserMoveToken,
+    requestMove: handleStageTokenMoveRequest,
+  });
+}
+
+function handleStageTokenMoveRequest({ tokenId, xCell, yCell, version }) {
+  if (!tokenId) {
+    return;
+  }
+
+  if (!socket || !socket.connected || !currentSessionId) {
+    ensurePixiStage()
+      .then((stage) => stage?.revertTokenMove(tokenId))
+      .catch(() => {});
+    return;
+  }
+
+  const payload = { tokenId, xCell, yCell };
+  if (Number.isInteger(version) && version >= 0) {
+    payload.version = version;
+  }
+
+  const rid = createRid();
+  pendingTokenMoves.set(rid, {
+    tokenId,
+    xCell,
+    yCell,
+    version: payload.version ?? null,
+    requestedAt: performance.now(),
+  });
+
+  const envelope = {
+    type: 'token.move:in',
+    rid,
+    ts: Date.now(),
+    payload,
+  };
+
+  socket.emit('message', envelope);
+  logEvent('Запрошено перемещение жетона', payload);
 }
 
 function showCanvasOverlay({ title, text, showButton = false, buttonLabel = 'Загрузить активную' } = {}) {
@@ -187,6 +292,266 @@ function setCanvasOverlayLoading(isLoading) {
 async function resetCanvasStage() {
   const stage = await ensurePixiStage();
   stage?.clear();
+  canvasState.gridSize = null;
+  updateTokenFormAccess();
+}
+
+function clearTokenStatusTimeout() {
+  if (tokenToolsState.statusResetTimeoutId) {
+    window.clearTimeout(tokenToolsState.statusResetTimeoutId);
+    tokenToolsState.statusResetTimeoutId = null;
+  }
+}
+
+function setTokenFormStatus(message, variant = 'idle', { autoReset = false } = {}) {
+  if (!tokenStatusEl) return;
+
+  clearTokenStatusTimeout();
+  tokenToolsState.statusVariant = variant;
+  tokenStatusEl.textContent = message;
+  tokenStatusEl.classList.toggle('token-form__status--error', variant === 'error');
+  tokenStatusEl.classList.toggle('token-form__status--success', variant === 'success');
+
+  if (autoReset) {
+    tokenToolsState.statusResetTimeoutId = window.setTimeout(() => {
+      tokenToolsState.statusResetTimeoutId = null;
+      if (tokenToolsState.isSubmitting) {
+        return;
+      }
+      tokenToolsState.statusVariant = 'idle';
+      if (tokenStatusEl) {
+        tokenStatusEl.classList.remove('token-form__status--error', 'token-form__status--success');
+        tokenStatusEl.textContent = 'Введите имя и координаты клетки.';
+      }
+    }, 3200);
+  }
+}
+
+function resetTokenForm() {
+  if (tokenNameInput) tokenNameInput.value = '';
+  if (tokenXInput) tokenXInput.value = '';
+  if (tokenYInput) tokenYInput.value = '';
+}
+
+function updateTokenFormAccess() {
+  if (!tokenForm) return;
+
+  const hasSession = Boolean(currentSessionId);
+  const hasActiveScene = Boolean(canvasState.activeSceneId);
+  const canSubmit = currentRole === 'MASTER' && isConnected && hasSession && hasActiveScene;
+  const disableFields = !canSubmit || tokenToolsState.isSubmitting;
+
+  [tokenNameInput, tokenXInput, tokenYInput].forEach((input) => {
+    input?.toggleAttribute('disabled', disableFields);
+  });
+  tokenSubmitBtn?.toggleAttribute('disabled', disableFields);
+
+  if (tokenToolsState.isSubmitting) {
+    return;
+  }
+
+  if (!canSubmit) {
+    if (currentRole !== 'MASTER') {
+      setTokenFormStatus('Доступно только Мастеру.', 'idle');
+    } else if (!isConnected) {
+      setTokenFormStatus('Ожидаем соединение с сервером...', 'idle');
+    } else if (!hasSession) {
+      setTokenFormStatus('Создайте или загрузите сессию, чтобы добавлять жетоны.', 'idle');
+    } else if (!hasActiveScene) {
+      setTokenFormStatus('Сделайте сцену активной, чтобы добавлять жетоны.', 'idle');
+    }
+  } else if (tokenToolsState.statusVariant === 'idle') {
+    setTokenFormStatus('Введите имя и координаты клетки.', 'idle');
+  }
+}
+
+function initTokenTools() {
+  if (!gmTokensToolsItem || tokenForm) {
+    return;
+  }
+
+  tokenForm = document.createElement('form');
+  tokenForm.className = 'token-form';
+  tokenForm.autocomplete = 'off';
+
+  const fields = document.createElement('div');
+  fields.className = 'token-form__fields';
+
+  const nameField = document.createElement('label');
+  nameField.className = 'field token-form__field';
+  const nameLabel = document.createElement('span');
+  nameLabel.className = 'field__label';
+  nameLabel.textContent = 'Имя жетона';
+  tokenNameInput = document.createElement('input');
+  tokenNameInput.type = 'text';
+  tokenNameInput.required = true;
+  tokenNameInput.placeholder = 'Например, Страж';
+  tokenNameInput.className = 'field__input';
+  tokenNameInput.autocomplete = 'off';
+  nameField.append(nameLabel, tokenNameInput);
+
+  const coordsRow = document.createElement('div');
+  coordsRow.className = 'token-form__coordinates';
+
+  const xField = document.createElement('label');
+  xField.className = 'field token-form__field token-form__field--compact';
+  const xLabel = document.createElement('span');
+  xLabel.className = 'field__label';
+  xLabel.textContent = 'Клетка X';
+  tokenXInput = document.createElement('input');
+  tokenXInput.type = 'number';
+  tokenXInput.inputMode = 'numeric';
+  tokenXInput.min = '0';
+  tokenXInput.step = '1';
+  tokenXInput.placeholder = '0';
+  tokenXInput.className = 'field__input';
+  xField.append(xLabel, tokenXInput);
+
+  const yField = document.createElement('label');
+  yField.className = 'field token-form__field token-form__field--compact';
+  const yLabel = document.createElement('span');
+  yLabel.className = 'field__label';
+  yLabel.textContent = 'Клетка Y';
+  tokenYInput = document.createElement('input');
+  tokenYInput.type = 'number';
+  tokenYInput.inputMode = 'numeric';
+  tokenYInput.min = '0';
+  tokenYInput.step = '1';
+  tokenYInput.placeholder = '0';
+  tokenYInput.className = 'field__input';
+  yField.append(yLabel, tokenYInput);
+
+  coordsRow.append(xField, yField);
+
+  fields.append(nameField, coordsRow);
+
+  tokenSubmitBtn = document.createElement('button');
+  tokenSubmitBtn.type = 'submit';
+  tokenSubmitBtn.className = 'btn btn--secondary token-form__submit';
+  tokenSubmitBtn.textContent = 'Добавить жетон';
+
+  tokenStatusEl = document.createElement('p');
+  tokenStatusEl.className = 'token-form__status';
+  tokenStatusEl.setAttribute('role', 'status');
+
+  tokenForm.append(fields, tokenSubmitBtn, tokenStatusEl);
+  gmTokensToolsItem.append(tokenForm);
+
+  tokenForm.addEventListener('submit', handleTokenFormSubmit);
+
+  setTokenFormStatus('Сделайте сцену активной, чтобы добавлять жетоны.', 'idle');
+  updateTokenFormAccess();
+}
+
+function handleTokenFormSubmit(event) {
+  event?.preventDefault?.();
+  if (!socket || !socket.connected) {
+    setTokenFormStatus('Нет соединения с сервером.', 'error');
+    return;
+  }
+
+  if (currentRole !== 'MASTER') {
+    setTokenFormStatus('Только Мастер может добавлять жетоны.', 'error');
+    return;
+  }
+
+  if (!currentSessionId) {
+    setTokenFormStatus('Подключитесь к сессии, чтобы добавить жетон.', 'error');
+    return;
+  }
+
+  if (!canvasState.activeSceneId) {
+    setTokenFormStatus('Активная сцена не выбрана.', 'error');
+    return;
+  }
+
+  const name = tokenNameInput?.value?.trim() ?? '';
+  if (!name) {
+    setTokenFormStatus('Введите имя жетона.', 'error');
+    tokenNameInput?.focus?.();
+    return;
+  }
+
+  const xCell = Number.parseInt(tokenXInput?.value ?? '', 10);
+  if (!Number.isInteger(xCell) || xCell < 0) {
+    setTokenFormStatus('Введите координату X (целое число).', 'error');
+    tokenXInput?.focus?.();
+    return;
+  }
+
+  const yCell = Number.parseInt(tokenYInput?.value ?? '', 10);
+  if (!Number.isInteger(yCell) || yCell < 0) {
+    setTokenFormStatus('Введите координату Y (целое число).', 'error');
+    tokenYInput?.focus?.();
+    return;
+  }
+
+  const rid = createRid();
+
+  tokenToolsState.isSubmitting = true;
+  tokenForm?.classList.add('token-form--busy');
+  updateTokenFormAccess();
+  setTokenFormStatus('Добавляем жетон на сцену...', 'idle');
+
+  pendingTokenCreates.set(rid, {
+    name,
+    xCell,
+    yCell,
+    submittedAt: performance.now(),
+  });
+
+  const envelope = {
+    type: 'token.create:in',
+    rid,
+    ts: Date.now(),
+    payload: {
+      sceneId: canvasState.activeSceneId,
+      name,
+      xCell,
+      yCell,
+    },
+  };
+
+  socket.emit('message', envelope);
+  logEvent('Запрошено создание жетона', envelope.payload);
+}
+
+function handleTokenCreateSuccess(token, rid) {
+  const isOwnRequest = rid ? pendingTokenCreates.has(rid) : false;
+
+  if (isOwnRequest) {
+    pendingTokenCreates.delete(rid);
+    tokenToolsState.isSubmitting = false;
+    tokenForm?.classList.remove('token-form--busy');
+    updateTokenFormAccess();
+    resetTokenForm();
+    tokenNameInput?.focus?.();
+    setTokenFormStatus('Жетон добавлен на сцену.', 'success', { autoReset: true });
+  }
+
+  if (token) {
+    logEvent('Жетон размещён', {
+      name: token.name ?? null,
+      xCell: token.xCell,
+      yCell: token.yCell,
+      sceneId: token.sceneId ?? null,
+      source: isOwnRequest ? 'self' : 'remote',
+    });
+  }
+}
+
+function handleTokenCreateError(errorMessage, rid) {
+  const isOwnRequest = rid ? pendingTokenCreates.has(rid) : false;
+
+  if (isOwnRequest) {
+    pendingTokenCreates.delete(rid);
+    tokenToolsState.isSubmitting = false;
+    tokenForm?.classList.remove('token-form--busy');
+    updateTokenFormAccess();
+    setTokenFormStatus(errorMessage || 'Не удалось создать жетон.', 'error');
+  }
+
+  logEvent('Ошибка создания жетона', errorMessage || 'Не удалось создать жетон.');
 }
 
 async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {}) {
@@ -208,6 +573,8 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
     if (!currentSessionId || !token) {
       await stage.clear();
       canvasState.activeSceneId = null;
+      canvasState.gridSize = null;
+      updateTokenFormAccess();
       if (!currentSessionId) {
         showCanvasOverlay({
           title: 'Сцена не выбрана',
@@ -241,6 +608,8 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
       const message = payload?.error ?? 'Не удалось получить активную сцену';
       await stage.clear();
       canvasState.activeSceneId = null;
+      canvasState.gridSize = null;
+      updateTokenFormAccess();
       showCanvasOverlay({
         title: 'Не удалось загрузить сцену',
         text: message,
@@ -264,6 +633,8 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
         showButton: true,
         buttonLabel: 'Загрузить активную',
       });
+      canvasState.gridSize = null;
+      updateTokenFormAccess();
       if (!silent) {
         logEvent('Активная сцена не назначена', { sessionId: currentSessionId });
       }
@@ -279,6 +650,8 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
     if (!snapshotRes.ok || !snapshot?.scene) {
       const message = snapshot?.error ?? 'Не удалось загрузить снапшот сцены';
       await stage.clear();
+      canvasState.gridSize = null;
+      updateTokenFormAccess();
       showCanvasOverlay({
         title: 'Не удалось загрузить сцену',
         text: message,
@@ -292,12 +665,16 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
     }
 
     await stage.loadSnapshot(snapshot);
+    canvasState.gridSize = snapshot?.scene?.gridSize ?? stage.tokensLayer?.getGridSize?.() ?? null;
+    updateTokenFormAccess();
     hideCanvasOverlay();
     logEvent('Снимок сцены загружен', { sceneId: activeSceneId, reason });
     return { loaded: true, sceneId: activeSceneId };
   } catch (err) {
     await stage?.clear?.();
     const message = err?.message ?? String(err);
+    canvasState.gridSize = null;
+    updateTokenFormAccess();
     showCanvasOverlay({
       title: 'Не удалось загрузить сцену',
       text: 'Проверьте соединение и попробуйте снова.',
@@ -686,6 +1063,8 @@ function handleCanvasSessionChange(previousSessionId, nextSessionId) {
   }
 
   canvasState.activeSceneId = null;
+  canvasState.gridSize = null;
+  pendingTokenMoves.clear();
   resetCanvasStage();
 
   if (!nextSessionId) {
@@ -701,6 +1080,8 @@ function handleCanvasSessionChange(previousSessionId, nextSessionId) {
       showButton: true,
     });
   }
+
+  updateTokenFormAccess();
 }
 
 async function setActiveScene(sceneId, { silent = false } = {}) {
@@ -1231,6 +1612,7 @@ function updateSessionControls() {
   sessionCopyBtn?.toggleAttribute('disabled', !hasSession);
   sessionInviteBtn?.toggleAttribute('disabled', !hasSession);
   updateSceneFormAccess();
+  updateTokenFormAccess();
 }
 
 function updateSessionCode(value, { persist = true } = {}) {
@@ -1265,6 +1647,7 @@ function setSessionId(value, { persist = true, syncAuth = true } = {}) {
   handleJournalSessionChange(previousSessionId, currentSessionId);
   handleScenePanelSessionChange(previousSessionId, currentSessionId);
   handleCanvasSessionChange(previousSessionId, currentSessionId);
+  updateStageMovePermissions().catch(() => {});
 }
 
 function setStatus(status) {
@@ -1297,6 +1680,7 @@ function updateRole(role) {
   }
   updateSessionControls();
   syncVisibility();
+  updateStageMovePermissions().catch(() => {});
 }
 
 const createRid = () => (crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -1530,6 +1914,8 @@ const gmModal = modal(document.getElementById('modal-gm'));
 const sessionSavesModal = sessionSavesModalEl ? modal(sessionSavesModalEl) : null;
 const joinModal = createJoinModal({ onSubmit: submitJoin });
 
+initTokenTools();
+
 document.querySelectorAll('[data-close]').forEach((node) =>
   node.addEventListener('click', () => {
     gmModal.close();
@@ -1613,6 +1999,17 @@ socket.on('disconnect', (reason) => {
   logEvent(`Отключено: ${reason}`);
   updateRole('GUEST');
   pendingPings.clear();
+  pendingTokenCreates.clear();
+  pendingTokenMoves.clear();
+  currentUserId = null;
+  tokenToolsState.isSubmitting = false;
+  tokenForm?.classList.remove('token-form--busy');
+  updateTokenFormAccess();
+  if (tokenStatusEl) {
+    clearTokenStatusTimeout();
+    setTokenFormStatus('Нет соединения с сервером.', 'error');
+  }
+  updateStageMovePermissions().catch(() => {});
 });
 
 socket.on('connect_error', (error) => {
@@ -1634,6 +2031,7 @@ socket.on('message', (envelope) => {
 
       const sessionId = payload?.sessionId ?? null;
       setSessionId(sessionId);
+      currentUserId = payload?.userId ? String(payload.userId) : null;
 
       if (!sessionId) {
         updateSessionCode(null);
@@ -1662,6 +2060,7 @@ socket.on('message', (envelope) => {
       if (currentSessionId && getStoredToken()) {
         loadActiveSceneSnapshot({ reason: 'handshake', silent: true });
       }
+      updateStageMovePermissions().catch(() => {});
       break;
     }
     case 'core.pong': {
@@ -1674,6 +2073,90 @@ socket.on('message', (envelope) => {
         payloadTs: payload?.ts,
         ts,
       });
+      break;
+    }
+    case 'token.create:out': {
+      const token = payload?.token ?? null;
+      const isOwn = rid ? pendingTokenCreates.has(rid) : false;
+
+      if (token?.sceneId && canvasState.activeSceneId && token.sceneId !== canvasState.activeSceneId) {
+        logEvent('Получен жетон для другой сцены', {
+          tokenSceneId: token.sceneId,
+          activeSceneId: canvasState.activeSceneId,
+        });
+        if (isOwn) {
+          handleTokenCreateSuccess(token, rid);
+        }
+        break;
+      }
+
+      ensurePixiStage()
+        .then((stage) => {
+          if (!stage || !token) {
+            return;
+          }
+          stage.addToken(token, { highlight: true });
+        })
+        .catch(() => {});
+
+      handleTokenCreateSuccess(token, rid);
+      break;
+    }
+    case 'token.create:error': {
+      const message = payload?.error ?? 'Не удалось создать жетон.';
+      handleTokenCreateError(message, rid);
+      break;
+    }
+    case 'token.move:out': {
+      const tokenId = payload?.tokenId ?? null;
+      const parsedX = Number.parseInt(payload?.xCell ?? '', 10);
+      const parsedY = Number.parseInt(payload?.yCell ?? '', 10);
+      const xCell = Number.isInteger(parsedX) ? parsedX : null;
+      const yCell = Number.isInteger(parsedY) ? parsedY : null;
+      const version = Number.isInteger(payload?.version) ? payload.version : undefined;
+      const updatedAt = payload?.updatedAt ?? null;
+      const isOwn = rid ? pendingTokenMoves.has(rid) : false;
+      const sceneId = payload?.sceneId ?? null;
+
+      if (isOwn) {
+        pendingTokenMoves.delete(rid);
+      }
+
+      if (sceneId && canvasState.activeSceneId && sceneId !== canvasState.activeSceneId) {
+        logEvent('Получено перемещение жетона для другой сцены', { sceneId, activeSceneId: canvasState.activeSceneId, tokenId });
+        break;
+      }
+
+      ensurePixiStage()
+        .then((stage) => {
+          if (!stage || !tokenId || !Number.isInteger(xCell) || !Number.isInteger(yCell)) {
+            return;
+          }
+          stage.applyTokenMove({ tokenId, xCell, yCell, version, updatedAt });
+        })
+        .catch(() => {});
+
+      logEvent(isOwn ? 'Перемещение жетона подтверждено' : 'Жетон перемещён', {
+        tokenId,
+        xCell,
+        yCell,
+        sceneId,
+        source: isOwn ? 'self' : 'remote',
+      });
+      break;
+    }
+    case 'token.move:error': {
+      const message = payload?.error ?? 'Не удалось переместить жетон.';
+      const entry = rid ? pendingTokenMoves.get(rid) : null;
+
+      if (entry) {
+        pendingTokenMoves.delete(rid);
+        ensurePixiStage()
+          .then((stage) => stage?.revertTokenMove(entry.tokenId))
+          .catch(() => {});
+      }
+
+      logEvent('Ошибка перемещения жетона', message);
       break;
     }
     default:

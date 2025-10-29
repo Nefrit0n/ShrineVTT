@@ -3,7 +3,7 @@ import 'https://cdn.jsdelivr.net/npm/@pixi/unsafe-eval@7.4.0/+esm';
 import GridLayer from './GridLayer.js';
 import MapLayer from './MapLayer.js';
 import TokensLayer from './TokensLayer.js';
-import { clampZoom, getSceneDimensions, sceneToViewScale } from './coords.js';
+import { clampZoom, getSceneDimensions, sceneToViewScale, cellToCanvas } from './coords.js';
 
 const DEFAULT_BACKGROUND = 0x070b11;
 const DRAG_BUTTON = 0;
@@ -48,9 +48,14 @@ export default class PixiStage {
 
     this.sceneWidth = 0;
     this.sceneHeight = 0;
+    this.gridSize = this.tokensLayer.getGridSize();
+    this.tokens = new Map();
+    this.activeSceneId = null;
     this.scale = 1;
     this.minZoom = 0.25;
     this.maxZoom = 4;
+    this.canControlToken = () => false;
+    this.tokenMoveRequestHandler = null;
 
     this.dragState = {
       active: false,
@@ -60,6 +65,12 @@ export default class PixiStage {
       originX: 0,
       originY: 0,
     };
+
+    this.tokensLayer.setInteractionOptions({
+      canMoveToken: (token) => this.canControlToken(token),
+      onMoveRequest: (move) => this.handleTokenMoveRequest(move),
+      throttleMs: 50,
+    });
 
     this.handlePointerDown = this.handlePointerDown.bind(this);
     this.handlePointerMove = this.handlePointerMove.bind(this);
@@ -101,6 +112,7 @@ export default class PixiStage {
 
     this.sceneWidth = width;
     this.sceneHeight = height;
+    this.activeSceneId = scene?.id ?? null;
 
     this.mapLayer.setScene(scene);
     this.gridLayer.draw({
@@ -108,7 +120,22 @@ export default class PixiStage {
       heightPx: scene.heightPx,
       gridSize: scene.gridSize,
     });
+    const columns = scene.gridSize ? Math.floor(scene.widthPx / scene.gridSize) : 0;
+    const rows = scene.gridSize ? Math.floor(scene.heightPx / scene.gridSize) : 0;
+    this.tokensLayer.setSceneBounds({
+      gridSize: scene.gridSize,
+      columns: Number.isFinite(columns) && columns > 0 ? columns : 0,
+      rows: Number.isFinite(rows) && rows > 0 ? rows : 0,
+    });
     this.tokensLayer.setTokens(tokens, { gridSize: scene.gridSize });
+    this.gridSize = this.tokensLayer.getGridSize();
+    this.tokens.clear();
+    tokens.forEach((token) => {
+      if (token?.id) {
+        this.tokens.set(token.id, token);
+        this.tokensLayer.updateToken(token);
+      }
+    });
 
     this.fitToView();
   }
@@ -116,10 +143,169 @@ export default class PixiStage {
   clear() {
     this.sceneWidth = 0;
     this.sceneHeight = 0;
+    this.gridSize = this.tokensLayer.getGridSize();
+    this.tokens.clear();
+    this.activeSceneId = null;
     this.mapLayer.clear();
     this.gridLayer.clear();
     this.tokensLayer.clear();
     this.resetView();
+  }
+
+  addToken(token, { highlight = false } = {}) {
+    if (!token || typeof token !== 'object') {
+      return false;
+    }
+
+    if (!this.activeSceneId) {
+      return false;
+    }
+
+    if (token.sceneId && token.sceneId !== this.activeSceneId) {
+      return false;
+    }
+
+    const mergedToken = token?.id && this.tokens.has(token.id) ? { ...this.tokens.get(token.id), ...token } : token;
+
+    const sprite = this.tokensLayer.addSprite(mergedToken, {
+      gridSize: this.gridSize,
+      highlight,
+    });
+
+    if (!sprite) {
+      return false;
+    }
+
+    this.gridSize = this.tokensLayer.getGridSize();
+
+    if (token.id) {
+      this.tokens.set(token.id, mergedToken);
+    }
+
+    if (highlight) {
+      this.highlightToken(mergedToken);
+    }
+
+    return true;
+  }
+
+  setTokenMoveHandler({ canMoveToken, requestMove } = {}) {
+    this.canControlToken = typeof canMoveToken === 'function' ? canMoveToken : () => false;
+    this.tokenMoveRequestHandler = typeof requestMove === 'function' ? requestMove : null;
+    this.tokensLayer.setInteractionOptions({
+      canMoveToken: (token) => this.canControlToken(token),
+      onMoveRequest: (move) => this.handleTokenMoveRequest(move),
+      throttleMs: 50,
+    });
+  }
+
+  handleTokenMoveRequest(move) {
+    if (!move || !move.tokenId || !this.tokenMoveRequestHandler) {
+      return;
+    }
+
+    const token = this.tokens.get(move.tokenId);
+    if (!token) {
+      return;
+    }
+
+    const version = Number.isInteger(move.version) ? move.version : token.version ?? 0;
+
+    this.tokenMoveRequestHandler({
+      tokenId: move.tokenId,
+      xCell: move.xCell,
+      yCell: move.yCell,
+      version,
+    });
+  }
+
+  applyTokenMove({ tokenId, xCell, yCell, version, updatedAt }) {
+    if (!tokenId || xCell === undefined || yCell === undefined) {
+      return false;
+    }
+
+    const token = this.tokens.get(tokenId);
+    if (!token) {
+      return false;
+    }
+
+    const nextToken = {
+      ...token,
+      xCell,
+      yCell,
+      version: Number.isInteger(version) ? version : token.version,
+      updatedAt: updatedAt ?? token.updatedAt ?? null,
+    };
+
+    this.tokens.set(tokenId, nextToken);
+    this.tokensLayer.updateToken(nextToken);
+    return true;
+  }
+
+  revertTokenMove(tokenId) {
+    if (!tokenId) {
+      return false;
+    }
+
+    const token = this.tokens.get(tokenId);
+    if (!token) {
+      return false;
+    }
+
+    this.tokensLayer.updateToken(token);
+    return true;
+  }
+
+  getTokenScreenRect(token) {
+    const gridSize = this.tokensLayer.getGridSize();
+    if (!gridSize) {
+      return { x: 0, y: 0, size: 0 };
+    }
+
+    const scale = this.container.scale?.x ?? 1;
+    const size = gridSize * scale;
+    const baseX = cellToCanvas(token?.xCell ?? 0, gridSize);
+    const baseY = cellToCanvas(token?.yCell ?? 0, gridSize);
+    const offsetX = this.container.position?.x ?? 0;
+    const offsetY = this.container.position?.y ?? 0;
+
+    return {
+      x: offsetX + baseX * scale,
+      y: offsetY + baseY * scale,
+      size,
+    };
+  }
+
+  highlightToken(token) {
+    if (!this.canvas) {
+      return;
+    }
+
+    const frame = this.canvas.parentElement;
+    if (!frame) {
+      return;
+    }
+
+    const { x, y, size } = this.getTokenScreenRect(token);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || size <= 0) {
+      return;
+    }
+
+    const marker = document.createElement('span');
+    marker.className = 'board__token-highlight';
+    marker.style.left = `${x}px`;
+    marker.style.top = `${y}px`;
+    marker.style.width = `${size}px`;
+    marker.style.height = `${size}px`;
+
+    frame.appendChild(marker);
+
+    const remove = () => {
+      marker.remove();
+    };
+
+    marker.addEventListener('animationend', remove, { once: true });
+    window.setTimeout(remove, 2000);
   }
 
   resetView() {
@@ -146,8 +332,30 @@ export default class PixiStage {
     this.container.position.set(centeredX, centeredY);
   }
 
+  isPointerOverToken(event) {
+    if (!this.tokensLayer || !this.tokensLayer.tokenSprites?.size) {
+      return false;
+    }
+
+    const rect = this.canvas.getBoundingClientRect();
+    const pointerX = event.clientX - rect.left;
+    const pointerY = event.clientY - rect.top;
+    const scale = this.container.scale?.x ?? 1;
+    const offsetX = this.container.position?.x ?? 0;
+    const offsetY = this.container.position?.y ?? 0;
+
+    const worldX = (pointerX - offsetX) / scale;
+    const worldY = (pointerY - offsetY) / scale;
+
+    return this.tokensLayer.hasTokenAt(worldX, worldY);
+  }
+
   handlePointerDown(event) {
     if (event.button !== DRAG_BUTTON) {
+      return;
+    }
+
+    if (this.isPointerOverToken(event)) {
       return;
     }
 

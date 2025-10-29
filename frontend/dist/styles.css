@@ -519,6 +519,51 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 }
 
+.token-form {
+  display: grid;
+  gap: 10px;
+}
+
+.token-form__fields {
+  display: grid;
+  gap: 10px;
+}
+
+.token-form__coordinates {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+}
+
+.token-form__field--compact .field__input {
+  padding-right: 10px;
+}
+
+.token-form__submit {
+  justify-self: flex-start;
+}
+
+.token-form--busy .token-form__submit {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.token-form__status {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dimmer);
+  min-height: 16px;
+}
+
+.token-form__status--error {
+  color: var(--vermillion);
+}
+
+.token-form__status--success {
+  color: var(--jade);
+}
+
 .scene-form__actions {
   display: flex;
   justify-content: flex-end;
@@ -716,6 +761,35 @@ body {
 
 .board__overlay[hidden] {
   display: none;
+}
+
+.board__token-highlight {
+  position: absolute;
+  border-radius: 999px;
+  border: 2px solid rgba(74, 180, 155, 0.85);
+  box-shadow: 0 0 0 0 rgba(74, 180, 155, 0.35), 0 0 24px rgba(74, 180, 155, 0.45);
+  pointer-events: none;
+  transform: translate(-8%, -8%);
+  opacity: 0;
+  z-index: 3;
+  animation: token-highlight-pulse 1.4s ease-out forwards;
+}
+
+@keyframes token-highlight-pulse {
+  0% {
+    opacity: 0.15;
+    transform: translate(-8%, -8%) scale(0.75);
+    box-shadow: 0 0 0 0 rgba(74, 180, 155, 0.35), 0 0 12px rgba(74, 180, 155, 0.35);
+  }
+  40% {
+    opacity: 1;
+    box-shadow: 0 0 0 6px rgba(74, 180, 155, 0.25), 0 0 28px rgba(74, 180, 155, 0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-8%, -8%) scale(1.4);
+    box-shadow: 0 0 0 18px rgba(74, 180, 155, 0), 0 0 36px rgba(74, 180, 155, 0.05);
+  }
 }
 
 .board__placeholder {

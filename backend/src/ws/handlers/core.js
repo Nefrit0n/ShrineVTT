@@ -39,6 +39,7 @@ export default function registerCoreHandlers(namespace, { logger = log }) {
               role: socket.data.role,
               username: socket.data.username,
               sessionId: socket.data.sessionId,
+              userId: socket.data.userId ?? null,
             },
           };
 

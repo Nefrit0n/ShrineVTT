@@ -3,6 +3,7 @@ import log from '../log.js';
 import registerWsMiddleware from './middleware.js';
 import registerCoreHandlers from './handlers/core.js';
 import registerCommandHandlers from './handlers/commands.js';
+import registerTokenHandlers from './handlers/tokens.js';
 
 const WS_NAMESPACE = '/ws';
 
@@ -26,6 +27,7 @@ export default function createWsServer(httpServer, { logger = log, jwt } = {}) {
   });
   registerCoreHandlers(namespace, { logger });
   registerCommandHandlers(namespace, { logger });
+  registerTokenHandlers(namespace, { logger });
 
   logger.info({ namespace: WS_NAMESPACE }, 'WS namespace initialized');
   return io;
