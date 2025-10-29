@@ -1,11 +1,92 @@
 import log from '../../log.js';
 
-export default function registerCoreHandlers(namespace, { logger = log }) {
+function emitActiveSceneSnapshot(socket, {
+  logger,
+  sessionService,
+  sceneQueries,
+  reason,
+} = {}) {
+  if (!sessionService || !sceneQueries) {
+    return;
+  }
+
+  const sessionId = socket.data?.sessionId ?? null;
+  if (!sessionId) {
+    return;
+  }
+
+  try {
+    const activeSceneId = sessionService.getActiveSceneId(sessionId);
+    if (!activeSceneId) {
+      socket.emit('message', {
+        type: 'scene.snapshot:out',
+        ts: Date.now(),
+        payload: {
+          sessionId,
+          sceneId: null,
+          snapshot: null,
+          reason: reason ?? 'unknown',
+        },
+      });
+      logger?.debug?.({ sessionId, reason }, 'No active scene for session snapshot emit');
+      return;
+    }
+
+    const snapshot = sceneQueries.getSceneSnapshot({ sessionId, sceneId: activeSceneId });
+
+    if (!snapshot) {
+      logger?.warn?.(
+        { sessionId, sceneId: activeSceneId },
+        'Failed to build active scene snapshot for session',
+      );
+      socket.emit('message', {
+        type: 'scene.snapshot:out',
+        ts: Date.now(),
+        payload: {
+          sessionId,
+          sceneId: activeSceneId,
+          snapshot: null,
+          reason: reason ?? 'unknown',
+        },
+      });
+      return;
+    }
+
+    socket.emit('message', {
+      type: 'scene.snapshot:out',
+      ts: Date.now(),
+      payload: {
+        sessionId,
+        sceneId: activeSceneId,
+        snapshot,
+        reason: reason ?? 'unknown',
+      },
+    });
+
+    logger?.info?.(
+      { sessionId, sceneId: activeSceneId, reason },
+      'Emitted active scene snapshot to socket',
+    );
+  } catch (err) {
+    logger?.error?.(
+      { err, sessionId, reason },
+      'Failed to emit active scene snapshot',
+    );
+  }
+}
+
+export default function registerCoreHandlers(namespace, {
+  logger = log,
+  sessionService,
+  sceneQueries,
+} = {}) {
   namespace.on('connection', (socket) => {
     logger.info(
       { username: socket.data.username, role: socket.data.role, sid: socket.data.sessionId },
       'Client connected via WS',
     );
+
+    emitActiveSceneSnapshot(socket, { logger, sessionService, sceneQueries, reason: 'connection' });
 
     socket.on('message', (envelope) => {
       if (!envelope || typeof envelope !== 'object') {
@@ -48,6 +129,13 @@ export default function registerCoreHandlers(namespace, { logger = log }) {
             { role: socket.data.role, sessionId: socket.data.sessionId },
             'Handshake completed'
           );
+
+          emitActiveSceneSnapshot(socket, {
+            logger,
+            sessionService,
+            sceneQueries,
+            reason: 'handshake',
+          });
           break;
         }
 
