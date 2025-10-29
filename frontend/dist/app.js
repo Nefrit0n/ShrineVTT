@@ -20,6 +20,31 @@ const boardOverlay = document.getElementById('board-overlay');
 const boardOverlayTitle = document.getElementById('board-overlay-title');
 const boardOverlayText = document.getElementById('board-overlay-text');
 const boardOverlayRetry = document.getElementById('board-overlay-retry');
+const boardFrame = boardOverlay?.parentElement ?? canvas?.closest('.board__frame') ?? null;
+
+let boardLoadingOverlay = null;
+
+if (boardFrame) {
+  boardLoadingOverlay = document.createElement('div');
+  boardLoadingOverlay.id = 'board-loading';
+  boardLoadingOverlay.className = 'board__loading';
+  boardLoadingOverlay.innerHTML = `
+    <div class="board__spinner" role="status" aria-live="polite">
+      <div class="board__spinner-icon" aria-hidden="true"></div>
+      <p class="board__spinner-text">Загружаем сцену…</p>
+    </div>
+  `;
+  boardFrame.appendChild(boardLoadingOverlay);
+}
+
+function showBoardLoadingOverlay() {
+  boardLoadingOverlay?.removeAttribute('hidden');
+}
+
+function hideBoardLoadingOverlay() {
+  if (!boardLoadingOverlay) return;
+  boardLoadingOverlay.setAttribute('hidden', '');
+}
 const visibilityTargets = Array.from(document.querySelectorAll('[data-visible]'));
 const journalTextarea = document.getElementById('player-notes');
 const journalStatusEl = document.getElementById('player-notes-status');
@@ -132,6 +157,7 @@ let currentSessionId = null;
 let currentSessionCode = null;
 let currentUserId = null;
 let socket = null;
+let hasReceivedInitialSnapshot = false;
 
 body.dataset.role = currentRole.toLowerCase();
 body.dataset.connection = 'offline';
@@ -159,8 +185,12 @@ function syncVisibility() {
 
 async function ensurePixiStage() {
   if (!canvas) return null;
-  if (pixiStage) return pixiStage;
+  if (pixiStage) {
+    hideBoardLoadingOverlay();
+    return pixiStage;
+  }
   if (!pixiStagePromise) {
+    showBoardLoadingOverlay();
     pixiStagePromise = PixiStage.create({ canvas })
       .then((stage) => {
         pixiStage = stage;
@@ -168,10 +198,12 @@ async function ensurePixiStage() {
           canMoveToken: canCurrentUserMoveToken,
           requestMove: handleStageTokenMoveRequest,
         });
+        hideBoardLoadingOverlay();
         return stage;
       })
       .catch((err) => {
         pixiStagePromise = null;
+        hideBoardLoadingOverlay();
         logEvent('Не удалось инициализировать полотно', err?.message ?? String(err));
         return null;
       });
@@ -554,6 +586,32 @@ function handleTokenCreateError(errorMessage, rid) {
   logEvent('Ошибка создания жетона', errorMessage || 'Не удалось создать жетон.');
 }
 
+async function applySceneSnapshot({
+  sceneId,
+  snapshot,
+  stage: providedStage = null,
+  reason = 'manual',
+  logMessage = 'Снимок сцены обновлён',
+}) {
+  const stage = providedStage ?? (await ensurePixiStage());
+  if (!stage) {
+    return false;
+  }
+
+  if (!snapshot || !snapshot.scene) {
+    return false;
+  }
+
+  await stage.loadSnapshot(snapshot);
+  canvasState.activeSceneId = sceneId ?? snapshot.scene?.id ?? null;
+  canvasState.gridSize = snapshot?.scene?.gridSize ?? stage.tokensLayer?.getGridSize?.() ?? null;
+  updateTokenFormAccess();
+  hideCanvasOverlay();
+  logEvent(logMessage, { sceneId: canvasState.activeSceneId, reason });
+  updateStageMovePermissions().catch(() => {});
+  return true;
+}
+
 async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {}) {
   if (canvasState.isLoading) {
     return { loading: true };
@@ -664,12 +722,17 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
       return { loaded: false, error: message };
     }
 
-    await stage.loadSnapshot(snapshot);
-    canvasState.gridSize = snapshot?.scene?.gridSize ?? stage.tokensLayer?.getGridSize?.() ?? null;
-    updateTokenFormAccess();
-    hideCanvasOverlay();
-    logEvent('Снимок сцены загружен', { sceneId: activeSceneId, reason });
-    return { loaded: true, sceneId: activeSceneId };
+    const applied = await applySceneSnapshot({
+      sceneId: activeSceneId,
+      snapshot,
+      stage,
+      reason,
+      logMessage: 'Снимок сцены загружен',
+    });
+    if (applied) {
+      hasReceivedInitialSnapshot = true;
+    }
+    return { loaded: applied, sceneId: activeSceneId };
   } catch (err) {
     await stage?.clear?.();
     const message = err?.message ?? String(err);
@@ -1633,6 +1696,9 @@ function updateSessionCode(value, { persist = true } = {}) {
 function setSessionId(value, { persist = true, syncAuth = true } = {}) {
   const previousSessionId = currentSessionId;
   currentSessionId = value && typeof value === 'string' ? value : null;
+  if (currentSessionId !== previousSessionId) {
+    hasReceivedInitialSnapshot = false;
+  }
   if (persist) {
     if (currentSessionId) {
       localStorage.setItem(STORAGE_KEYS.SESSION_ID, currentSessionId);
@@ -2001,6 +2067,7 @@ socket.on('disconnect', (reason) => {
   pendingPings.clear();
   pendingTokenCreates.clear();
   pendingTokenMoves.clear();
+  hasReceivedInitialSnapshot = false;
   currentUserId = null;
   tokenToolsState.isSubmitting = false;
   tokenForm?.classList.remove('token-form--busy');
@@ -2057,7 +2124,7 @@ socket.on('message', (envelope) => {
         rid,
       });
 
-      if (currentSessionId && getStoredToken()) {
+      if (currentSessionId && getStoredToken() && !hasReceivedInitialSnapshot) {
         loadActiveSceneSnapshot({ reason: 'handshake', silent: true });
       }
       updateStageMovePermissions().catch(() => {});
@@ -2072,6 +2139,78 @@ socket.on('message', (envelope) => {
         latency: latency ? `${latency} ms` : 'н/д',
         payloadTs: payload?.ts,
         ts,
+      });
+      break;
+    }
+    case 'scene.snapshot:out': {
+      const payloadSessionId = payload?.sessionId ?? null;
+      if (payloadSessionId && currentSessionId && payloadSessionId !== currentSessionId) {
+        logEvent('Получен снапшот для другой сессии', {
+          payloadSessionId,
+          currentSessionId,
+        });
+        break;
+      }
+
+      if (payloadSessionId && !currentSessionId) {
+        setSessionId(payloadSessionId, { persist: false, syncAuth: false });
+      }
+
+      hasReceivedInitialSnapshot = true;
+      canvasState.isLoading = false;
+      setCanvasOverlayLoading(false);
+
+      const snapshot = payload?.snapshot ?? null;
+      const sceneId = payload?.sceneId ?? snapshot?.scene?.id ?? null;
+      const reason = payload?.reason ?? 'ws';
+
+      if (!sceneId) {
+        ensurePixiStage()
+          .then((stage) => stage?.clear?.())
+          .catch(() => {});
+        canvasState.activeSceneId = null;
+        canvasState.gridSize = null;
+        updateTokenFormAccess();
+        showCanvasOverlay({
+          title: 'Сцена не выбрана',
+          text: 'Сделайте сцену активной или повторите попытку позже.',
+          showButton: true,
+          buttonLabel: 'Загрузить активную',
+        });
+        logEvent('Активная сцена не назначена', {
+          sessionId: payloadSessionId ?? currentSessionId ?? null,
+          reason,
+        });
+        break;
+      }
+
+      if (!snapshot || !snapshot.scene) {
+        ensurePixiStage()
+          .then((stage) => stage?.clear?.())
+          .catch(() => {});
+        canvasState.activeSceneId = null;
+        canvasState.gridSize = null;
+        updateTokenFormAccess();
+        showCanvasOverlay({
+          title: 'Не удалось загрузить сцену',
+          text: 'Снимок сцены недоступен. Попробуйте обновить позже.',
+          showButton: true,
+          buttonLabel: 'Повторить попытку',
+        });
+        logEvent('Не удалось получить снапшот сцены', {
+          sceneId,
+          reason,
+        });
+        break;
+      }
+
+      applySceneSnapshot({
+        sceneId,
+        snapshot,
+        reason,
+        logMessage: 'Снимок сцены синхронизирован',
+      }).catch((err) => {
+        logEvent('Не удалось применить снапшот сцены', err?.message ?? String(err));
       });
       break;
     }

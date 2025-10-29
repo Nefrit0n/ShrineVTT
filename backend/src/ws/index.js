@@ -7,7 +7,10 @@ import registerTokenHandlers from './handlers/tokens.js';
 
 const WS_NAMESPACE = '/ws';
 
-export default function createWsServer(httpServer, { logger = log, jwt } = {}) {
+export default function createWsServer(
+  httpServer,
+  { logger = log, jwt, sessionService, sceneQueries } = {},
+) {
   const io = new Server(httpServer, {
     cors: {
       origin: '*',
@@ -25,7 +28,7 @@ export default function createWsServer(httpServer, { logger = log, jwt } = {}) {
       logger.info({ sessionId, sid: socket.id }, 'Socket joined session room');
     }
   });
-  registerCoreHandlers(namespace, { logger });
+  registerCoreHandlers(namespace, { logger, sessionService, sceneQueries });
   registerCommandHandlers(namespace, { logger });
   registerTokenHandlers(namespace, { logger });
 

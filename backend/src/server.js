@@ -53,7 +53,12 @@ const server = app.listen(config.port, () => {
   log.info({ port: config.port }, 'Server listening');
 });
 
-createWsServer(server, { logger: log, jwt });
+createWsServer(server, {
+  logger: log,
+  jwt,
+  sessionService,
+  sceneQueries,
+});
 
 server.on('error', (err) => {
   log.error({ err }, 'HTTP server error');
