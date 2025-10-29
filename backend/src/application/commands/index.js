@@ -232,10 +232,112 @@ export function registerTokenMoveCommand({ sceneRepository, tokenRepository, log
   });
 }
 
+export function registerTokenAssignOwnerCommand({
+  sceneRepository,
+  tokenRepository,
+  sessionRepository,
+  logger,
+}) {
+  if (!sceneRepository || typeof sceneRepository.findById !== 'function') {
+    throw new Error('sceneRepository dependency is required to register token.assignOwner command');
+  }
+
+  if (
+    !tokenRepository ||
+    typeof tokenRepository.findById !== 'function' ||
+    typeof tokenRepository.update !== 'function'
+  ) {
+    throw new Error('tokenRepository dependency is required to register token.assignOwner command');
+  }
+
+  if (!sessionRepository || typeof sessionRepository.listMembers !== 'function') {
+    throw new Error('sessionRepository dependency is required to register token.assignOwner command');
+  }
+
+  const log = logger?.child ? logger.child({ command: 'token.assignOwner' }) : logger;
+
+  register('token.assignOwner', async ({ sessionId, actorRole, payload }) => {
+    if (!sessionId) {
+      throw new Error('Session context is required to assign token owner');
+    }
+
+    if (actorRole !== 'MASTER') {
+      throw new DomainError('Недостаточно прав для изменения владельца жетона.', {
+        code: 'FORBIDDEN',
+      });
+    }
+
+    if (!payload || typeof payload !== 'object') {
+      throw new DomainError('Invalid token.assignOwner payload');
+    }
+
+    const tokenId = typeof payload.tokenId === 'string' ? payload.tokenId.trim() : '';
+    if (!tokenId) {
+      throw new DomainError('tokenId is required to assign token owner');
+    }
+
+    const ownerRaw =
+      payload.ownerUserId === undefined || payload.ownerUserId === null
+        ? ''
+        : String(payload.ownerUserId).trim();
+    const ownerUserId = ownerRaw.length ? ownerRaw : null;
+
+    const token = tokenRepository.findById({ sessionId, tokenId });
+    if (!token) {
+      throw new DomainError('Token not found for owner assignment');
+    }
+
+    if ((token.ownerUserId ?? null) === ownerUserId) {
+      return { token: token.toObject() };
+    }
+
+    const scene = sceneRepository.findById({ sessionId, sceneId: token.sceneId });
+    if (!scene) {
+      throw new DomainError('Scene not found for token owner assignment');
+    }
+
+    if (ownerUserId) {
+      const members = sessionRepository.listMembers(sessionId);
+      const ownerCandidate = members.find((member) => member.userId === ownerUserId);
+      if (!ownerCandidate) {
+        throw new DomainError('Участник не найден в этой сессии', { code: 'MEMBER_NOT_FOUND' });
+      }
+    }
+
+    try {
+      const updated = tokenRepository.update({
+        scene,
+        tokenId: token.id,
+        expectedVersion: token.version,
+        patch: { ownerUserId },
+      });
+
+      log?.info?.(
+        {
+          tokenId: updated.id,
+          sessionId,
+          ownerUserId: updated.ownerUserId ?? null,
+        },
+        'Token owner updated',
+      );
+
+      return { token: updated.toObject() };
+    } catch (err) {
+      if (err instanceof StaleUpdateError) {
+        throw new DomainError('Состояние жетона устарело. Обновите сцену и повторите попытку.', {
+          code: 'STALE_TOKEN',
+        });
+      }
+      throw err;
+    }
+  });
+}
+
 export default {
   register,
   getCommandHandler,
   executeCommand,
   registerTokenCreateCommand,
   registerTokenMoveCommand,
+  registerTokenAssignOwnerCommand,
 };

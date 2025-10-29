@@ -573,6 +573,102 @@ body {
   color: var(--jade);
 }
 
+.token-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  background: linear-gradient(180deg, rgba(24, 30, 42, 0.88), rgba(12, 17, 27, 0.88));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.token-list__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 1fr);
+  gap: 12px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.token-list__column {
+  display: block;
+}
+
+.token-list__body {
+  display: grid;
+  gap: 10px;
+}
+
+.token-list__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(215, 185, 140, 0.22);
+  background: linear-gradient(180deg, rgba(19, 26, 36, 0.78), rgba(11, 16, 26, 0.82));
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.token-list__row--pending {
+  border-color: rgba(159, 182, 214, 0.55);
+  box-shadow: 0 0 0 1px rgba(159, 182, 214, 0.22);
+}
+
+.token-list__name {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-list__owner {
+  display: flex;
+  align-items: center;
+}
+
+.token-list__select {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: rgba(10, 15, 24, 0.9);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.4;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.token-list__select:hover:not([disabled]),
+.token-list__select:focus-visible {
+  border-color: rgba(215, 185, 140, 0.6);
+  box-shadow: 0 0 0 2px rgba(215, 185, 140, 0.18);
+  outline: none;
+}
+
+.token-list__select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.token-list__status {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  min-height: 16px;
+}
+
+.token-list__status--error {
+  color: var(--vermillion);
+}
+
 .scene-form__actions {
   display: flex;
   justify-content: flex-end;

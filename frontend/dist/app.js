@@ -77,6 +77,10 @@ let tokenXInput = null;
 let tokenYInput = null;
 let tokenSubmitBtn = null;
 let tokenStatusEl = null;
+let tokenListContainer = null;
+let tokenListHeader = null;
+let tokenListBody = null;
+let tokenListStatusEl = null;
 
 const tokenToolsState = {
   isSubmitting: false,
@@ -86,6 +90,19 @@ const tokenToolsState = {
 
 const pendingTokenCreates = new Map();
 const pendingTokenMoves = new Map();
+const pendingOwnerAssignments = new Map();
+const ownerAssignmentByRid = new Map();
+
+const tokenListState = {
+  tokens: new Map(),
+};
+
+const sessionMembersState = {
+  members: [],
+  isLoading: false,
+  lastSessionId: null,
+  error: null,
+};
 
 const JOURNAL_SAVE_DEBOUNCE = 800;
 const JOURNAL_STATUS_CLASSES = [
@@ -327,6 +344,9 @@ async function resetCanvasStage() {
   const stage = await ensurePixiStage();
   stage?.clear();
   canvasState.gridSize = null;
+  tokenListState.tokens.clear();
+  resetTokenOwnerAssignments();
+  renderTokenList();
   updateTokenFormAccess();
 }
 
@@ -471,10 +491,39 @@ function initTokenTools() {
   tokenForm.append(fields, tokenSubmitBtn, tokenStatusEl);
   gmTokensToolsItem.append(tokenForm);
 
+  tokenListContainer = document.createElement('div');
+  tokenListContainer.className = 'token-list';
+
+  tokenListHeader = document.createElement('div');
+  tokenListHeader.className = 'token-list__header';
+
+  const nameHeader = document.createElement('span');
+  nameHeader.className = 'token-list__column token-list__column--name';
+  nameHeader.textContent = 'Жетон';
+
+  const ownerHeader = document.createElement('span');
+  ownerHeader.className = 'token-list__column token-list__column--owner';
+  ownerHeader.textContent = 'Владелец';
+
+  tokenListHeader.append(nameHeader, ownerHeader);
+
+  tokenListBody = document.createElement('div');
+  tokenListBody.className = 'token-list__body';
+  tokenListBody.addEventListener('change', handleTokenOwnerChange);
+
+  tokenListStatusEl = document.createElement('p');
+  tokenListStatusEl.className = 'token-list__status';
+  tokenListStatusEl.setAttribute('role', 'status');
+  tokenListStatusEl.setAttribute('hidden', '');
+
+  tokenListContainer.append(tokenListHeader, tokenListBody, tokenListStatusEl);
+  gmTokensToolsItem.append(tokenListContainer);
+
   tokenForm.addEventListener('submit', handleTokenFormSubmit);
 
   setTokenFormStatus('Сделайте сцену активной, чтобы добавлять жетоны.', 'idle');
   updateTokenFormAccess();
+  renderTokenList();
 }
 
 function handleTokenFormSubmit(event) {
@@ -550,6 +599,369 @@ function handleTokenFormSubmit(event) {
   logEvent('Запрошено создание жетона', envelope.payload);
 }
 
+function formatSessionMemberLabel(member) {
+  const username = member?.username ? String(member.username) : 'Без имени';
+  const role = typeof member?.role === 'string' ? member.role.toUpperCase() : '';
+
+  if (role === 'MASTER') {
+    return `${username} (Мастер)`;
+  }
+
+  if (role === 'PLAYER') {
+    return `${username} (Игрок)`;
+  }
+
+  return role ? `${username} (${role})` : username;
+}
+
+function resetTokenOwnerAssignments() {
+  pendingOwnerAssignments.clear();
+  ownerAssignmentByRid.clear();
+}
+
+function resetSessionMembersState() {
+  sessionMembersState.members = [];
+  sessionMembersState.isLoading = false;
+  sessionMembersState.lastSessionId = null;
+  sessionMembersState.error = null;
+}
+
+function upsertTokenInList(token) {
+  if (!token || typeof token !== 'object' || !token.id) {
+    return false;
+  }
+
+  const normalized = {
+    ...token,
+    ownerUserId: token.ownerUserId ?? null,
+  };
+
+  tokenListState.tokens.set(token.id, normalized);
+  return true;
+}
+
+function handleTokenListSessionChange(previousSessionId, nextSessionId) {
+  if (previousSessionId !== nextSessionId) {
+    tokenListState.tokens.clear();
+    resetTokenOwnerAssignments();
+  }
+
+  if (!nextSessionId) {
+    resetSessionMembersState();
+  }
+
+  renderTokenList();
+}
+
+function renderTokenList() {
+  if (!tokenListContainer) {
+    return;
+  }
+
+  const isGM = currentRole === 'MASTER';
+  const hasSession = Boolean(currentSessionId);
+  const hasActiveScene = Boolean(canvasState.activeSceneId);
+
+  const visibleTokens = [];
+  if (tokenListState.tokens.size) {
+    tokenListState.tokens.forEach((token) => {
+      if (!hasActiveScene) {
+        visibleTokens.push(token);
+        return;
+      }
+
+      if (!token?.sceneId || token.sceneId === canvasState.activeSceneId) {
+        visibleTokens.push(token);
+      }
+    });
+  }
+
+  if (tokenListBody) {
+    tokenListBody.innerHTML = '';
+  }
+
+  if (tokenListHeader) {
+    if (isGM && hasSession && hasActiveScene && visibleTokens.length) {
+      tokenListHeader.removeAttribute('hidden');
+    } else {
+      tokenListHeader.setAttribute('hidden', '');
+    }
+  }
+
+  if (isGM && hasSession && hasActiveScene && visibleTokens.length && tokenListBody) {
+    const members = sessionMembersState.members;
+
+    const sortedTokens = visibleTokens
+      .map((token) => ({
+        ...token,
+        name: typeof token.name === 'string' ? token.name : '',
+        ownerUserId: token.ownerUserId ?? null,
+      }))
+      .sort((a, b) => {
+        const nameA = a.name.toLocaleLowerCase();
+        const nameB = b.name.toLocaleLowerCase();
+
+        if (nameA && nameB) {
+          const byName = nameA.localeCompare(nameB);
+          if (byName !== 0) {
+            return byName;
+          }
+        } else if (nameA) {
+          return -1;
+        } else if (nameB) {
+          return 1;
+        }
+
+        return (a.id ?? '').localeCompare(b.id ?? '');
+      });
+
+    sortedTokens.forEach((token) => {
+      const row = document.createElement('div');
+      row.className = 'token-list__row';
+
+      const pendingAssignment = pendingOwnerAssignments.get(token.id);
+      if (pendingAssignment) {
+        row.classList.add('token-list__row--pending');
+      }
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'token-list__name';
+      nameEl.textContent = token.name || 'Без названия';
+
+      const ownerWrapper = document.createElement('div');
+      ownerWrapper.className = 'token-list__owner';
+
+      const select = document.createElement('select');
+      select.className = 'token-list__select';
+      select.dataset.tokenId = token.id ?? '';
+
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = '— Без владельца —';
+      select.append(defaultOption);
+
+      members.forEach((member) => {
+        const option = document.createElement('option');
+        option.value = member.userId ?? '';
+        option.textContent = formatSessionMemberLabel(member);
+        select.append(option);
+      });
+
+      const ownerValueRaw =
+        pendingAssignment && pendingAssignment.ownerUserId !== undefined
+          ? pendingAssignment.ownerUserId
+          : token.ownerUserId;
+      const ownerValue = ownerValueRaw ? String(ownerValueRaw) : '';
+
+      if (
+        ownerValue &&
+        !members.some((member) => member.userId === ownerValue)
+      ) {
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = ownerValue;
+        placeholderOption.textContent = 'Не в сессии';
+        select.append(placeholderOption);
+      }
+
+      select.value = ownerValue;
+      const shouldDisable =
+        !isConnected ||
+        !hasSession ||
+        !hasActiveScene ||
+        sessionMembersState.isLoading ||
+        Boolean(pendingAssignment);
+      select.toggleAttribute('disabled', shouldDisable);
+
+      ownerWrapper.append(select);
+      row.append(nameEl, ownerWrapper);
+      tokenListBody.append(row);
+    });
+  }
+
+  if (tokenListStatusEl) {
+    let statusText = '';
+    let statusVariant = 'info';
+
+    if (!isGM) {
+      statusText = 'Доступно только Мастеру.';
+    } else if (!hasSession) {
+      statusText = 'Создайте или загрузите сессию, чтобы назначать владельцев.';
+    } else if (!isConnected) {
+      statusText = 'Ожидаем соединение с сервером…';
+    } else if (!hasActiveScene) {
+      statusText = 'Сделайте сцену активной, чтобы назначать владельцев.';
+    } else if (!visibleTokens.length) {
+      statusText = 'На активной сцене пока нет жетонов.';
+    } else if (sessionMembersState.isLoading) {
+      statusText = 'Загружаем список участников…';
+    } else if (sessionMembersState.error) {
+      statusText = sessionMembersState.error;
+      statusVariant = 'error';
+    } else if (!sessionMembersState.members.length) {
+      statusText = 'Игроки ещё не присоединились.';
+    }
+
+    if (statusText) {
+      tokenListStatusEl.textContent = statusText;
+      tokenListStatusEl.classList.toggle('token-list__status--error', statusVariant === 'error');
+      tokenListStatusEl.removeAttribute('hidden');
+    } else {
+      tokenListStatusEl.classList.remove('token-list__status--error');
+      tokenListStatusEl.setAttribute('hidden', '');
+      tokenListStatusEl.textContent = '';
+    }
+  }
+}
+
+function assignOwner(tokenId, ownerUserId) {
+  if (!tokenId) {
+    return;
+  }
+
+  if (currentRole !== 'MASTER') {
+    logEvent('Назначение владельца доступно только Мастеру');
+    renderTokenList();
+    return;
+  }
+
+  if (!socket || !socket.connected) {
+    logEvent('Нет соединения с сервером для назначения владельца');
+    renderTokenList();
+    return;
+  }
+
+  if (!currentSessionId) {
+    logEvent('Сессия не выбрана для назначения владельца');
+    renderTokenList();
+    return;
+  }
+
+  const normalizedOwner = ownerUserId ? String(ownerUserId).trim() : null;
+
+  const payload = { tokenId };
+  if (normalizedOwner) {
+    payload.ownerUserId = normalizedOwner;
+  } else {
+    payload.ownerUserId = null;
+  }
+
+  const rid = createRid();
+  pendingOwnerAssignments.set(tokenId, { rid, ownerUserId: normalizedOwner });
+  ownerAssignmentByRid.set(rid, tokenId);
+
+  renderTokenList();
+
+  const envelope = {
+    type: 'token.assignOwner:in',
+    rid,
+    ts: Date.now(),
+    payload,
+  };
+
+  socket.emit('message', envelope);
+  logEvent('Запрошено назначение владельца жетона', {
+    tokenId,
+    ownerUserId: normalizedOwner,
+  });
+}
+
+function handleTokenOwnerChange(event) {
+  const target = event?.target;
+  if (!target || !target.classList?.contains('token-list__select')) {
+    return;
+  }
+
+  const tokenId = target.dataset?.tokenId ?? '';
+  if (!tokenId) {
+    return;
+  }
+
+  const selectedValue = target.value;
+  const nextOwner = selectedValue ? selectedValue : null;
+
+  const existing = tokenListState.tokens.get(tokenId);
+  const currentOwner = existing?.ownerUserId ?? null;
+
+  if ((currentOwner ?? null) === (nextOwner ?? null)) {
+    return;
+  }
+
+  assignOwner(tokenId, nextOwner);
+}
+
+async function refreshSessionMembers({ force = false, silent = false } = {}) {
+  const sessionId = currentSessionId;
+  const token = getStoredToken();
+
+  if (!sessionId || currentRole !== 'MASTER' || !token) {
+    resetSessionMembersState();
+    renderTokenList();
+    return [];
+  }
+
+  if (sessionMembersState.isLoading && !force) {
+    return sessionMembersState.members;
+  }
+
+  if (
+    !force &&
+    sessionMembersState.lastSessionId === sessionId &&
+    sessionMembersState.members.length > 0 &&
+    !sessionMembersState.error
+  ) {
+    return sessionMembersState.members;
+  }
+
+  sessionMembersState.isLoading = true;
+  sessionMembersState.error = null;
+  renderTokenList();
+
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/members`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      const message = payload?.error ?? 'Не удалось получить список участников';
+      throw new Error(message);
+    }
+
+    const payload = await res.json().catch(() => ({}));
+    const members = Array.isArray(payload?.members) ? payload.members : [];
+
+    sessionMembersState.members = members
+      .map((member) => ({
+        userId: member?.userId ? String(member.userId) : null,
+        username: member?.username ?? '',
+        role: member?.role ?? 'PLAYER',
+      }))
+      .filter((member) => Boolean(member.userId));
+    sessionMembersState.lastSessionId = sessionId;
+    sessionMembersState.error = null;
+
+    if (!silent) {
+      logEvent('Список участников обновлён', {
+        sessionId,
+        count: sessionMembersState.members.length,
+      });
+    }
+
+    return sessionMembersState.members;
+  } catch (err) {
+    sessionMembersState.members = [];
+    sessionMembersState.error = err?.message ?? 'Не удалось получить список участников';
+    sessionMembersState.lastSessionId = null;
+    if (!silent) {
+      logEvent('Не удалось получить список участников', sessionMembersState.error);
+    }
+    return [];
+  } finally {
+    sessionMembersState.isLoading = false;
+    renderTokenList();
+  }
+}
+
 function handleTokenCreateSuccess(token, rid) {
   const isOwnRequest = rid ? pendingTokenCreates.has(rid) : false;
 
@@ -601,12 +1013,23 @@ async function applySceneSnapshot({
   }
 
   if (!snapshot || !snapshot.scene) {
+    tokenListState.tokens.clear();
+    resetTokenOwnerAssignments();
+    renderTokenList();
     return false;
   }
 
   await stage.loadSnapshot(snapshot);
   canvasState.activeSceneId = sceneId ?? snapshot.scene?.id ?? null;
   canvasState.gridSize = snapshot?.scene?.gridSize ?? stage.tokensLayer?.getGridSize?.() ?? null;
+  tokenListState.tokens.clear();
+  resetTokenOwnerAssignments();
+  if (Array.isArray(snapshot.tokens)) {
+    snapshot.tokens.forEach((token) => {
+      upsertTokenInList(token);
+    });
+  }
+  renderTokenList();
   updateTokenFormAccess();
   hideCanvasOverlay();
   logEvent(logMessage, { sceneId: canvasState.activeSceneId, reason });
@@ -634,6 +1057,9 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
       await stage.clear();
       canvasState.activeSceneId = null;
       canvasState.gridSize = null;
+      tokenListState.tokens.clear();
+      resetTokenOwnerAssignments();
+      renderTokenList();
       updateTokenFormAccess();
       if (!currentSessionId) {
         showCanvasOverlay({
@@ -669,6 +1095,9 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
       await stage.clear();
       canvasState.activeSceneId = null;
       canvasState.gridSize = null;
+      tokenListState.tokens.clear();
+      resetTokenOwnerAssignments();
+      renderTokenList();
       updateTokenFormAccess();
       showCanvasOverlay({
         title: 'Не удалось загрузить сцену',
@@ -694,6 +1123,9 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
         buttonLabel: 'Загрузить активную',
       });
       canvasState.gridSize = null;
+      tokenListState.tokens.clear();
+      resetTokenOwnerAssignments();
+      renderTokenList();
       updateTokenFormAccess();
       if (!silent) {
         logEvent('Активная сцена не назначена', { sessionId: currentSessionId });
@@ -711,6 +1143,9 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
       const message = snapshot?.error ?? 'Не удалось загрузить снапшот сцены';
       await stage.clear();
       canvasState.gridSize = null;
+      tokenListState.tokens.clear();
+      resetTokenOwnerAssignments();
+      renderTokenList();
       updateTokenFormAccess();
       showCanvasOverlay({
         title: 'Не удалось загрузить сцену',
@@ -738,6 +1173,9 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
   } catch (err) {
     await stage?.clear?.();
     const message = err?.message ?? String(err);
+    tokenListState.tokens.clear();
+    resetTokenOwnerAssignments();
+    renderTokenList();
     canvasState.gridSize = null;
     updateTokenFormAccess();
     showCanvasOverlay({
@@ -1147,6 +1585,7 @@ function handleCanvasSessionChange(previousSessionId, nextSessionId) {
   }
 
   updateTokenFormAccess();
+  renderTokenList();
 }
 
 async function setActiveScene(sceneId, { silent = false } = {}) {
@@ -1715,7 +2154,20 @@ function setSessionId(value, { persist = true, syncAuth = true } = {}) {
   handleJournalSessionChange(previousSessionId, currentSessionId);
   handleScenePanelSessionChange(previousSessionId, currentSessionId);
   handleCanvasSessionChange(previousSessionId, currentSessionId);
+  handleTokenListSessionChange(previousSessionId, currentSessionId);
+  if (currentRole === 'MASTER' && currentSessionId) {
+    const shouldForce =
+      sessionMembersState.lastSessionId !== currentSessionId ||
+      sessionMembersState.members.length === 0;
+    if (shouldForce) {
+      refreshSessionMembers({ force: true, silent: true });
+    }
+  } else if (!currentSessionId) {
+    resetSessionMembersState();
+    renderTokenList();
+  }
   updateStageMovePermissions().catch(() => {});
+  renderTokenList();
 }
 
 function setStatus(status) {
@@ -1732,6 +2184,7 @@ function setStatus(status) {
   }
   updateSessionControls();
   syncVisibility();
+  renderTokenList();
 }
 
 function updateRole(role) {
@@ -1745,9 +2198,14 @@ function updateRole(role) {
     sessionSavesModal?.close();
     resetSceneFormResult();
     setSceneFormStatus('Доступно только Мастеру.', 'idle');
+    resetSessionMembersState();
+    resetTokenOwnerAssignments();
+  } else if (currentSessionId) {
+    refreshSessionMembers({ force: true, silent: true });
   }
   updateSessionControls();
   syncVisibility();
+  renderTokenList();
   updateStageMovePermissions().catch(() => {});
 }
 
@@ -2078,6 +2536,9 @@ socket.on('disconnect', (reason) => {
     clearTokenStatusTimeout();
     setTokenFormStatus('Нет соединения с сервером.', 'error');
   }
+  resetTokenOwnerAssignments();
+  resetSessionMembersState();
+  renderTokenList();
   updateStageMovePermissions().catch(() => {});
 });
 
@@ -2240,6 +2701,14 @@ socket.on('message', (envelope) => {
         })
         .catch(() => {});
 
+      if (
+        token?.id &&
+        (!token.sceneId || !canvasState.activeSceneId || token.sceneId === canvasState.activeSceneId)
+      ) {
+        upsertTokenInList(token);
+        renderTokenList();
+      }
+
       handleTokenCreateSuccess(token, rid);
       break;
     }
@@ -2266,6 +2735,17 @@ socket.on('message', (envelope) => {
       if (sceneId && canvasState.activeSceneId && sceneId !== canvasState.activeSceneId) {
         logEvent('Получено перемещение жетона для другой сцены', { sceneId, activeSceneId: canvasState.activeSceneId, tokenId });
         break;
+      }
+
+      const existingToken = tokenId ? tokenListState.tokens.get(tokenId) : null;
+      if (existingToken) {
+        tokenListState.tokens.set(tokenId, {
+          ...existingToken,
+          xCell: Number.isInteger(xCell) ? xCell : existingToken.xCell,
+          yCell: Number.isInteger(yCell) ? yCell : existingToken.yCell,
+          version: Number.isInteger(version) ? version : existingToken.version,
+          updatedAt: updatedAt ?? existingToken.updatedAt ?? null,
+        });
       }
 
       ensurePixiStage()
@@ -2298,6 +2778,63 @@ socket.on('message', (envelope) => {
       }
 
       logEvent('Ошибка перемещения жетона', message);
+      break;
+    }
+    case 'token.assignOwner:out': {
+      const token = payload?.token ?? null;
+      let tokenId = token?.id ?? null;
+      const mappedTokenId = rid ? ownerAssignmentByRid.get(rid) : null;
+
+      if (rid) {
+        ownerAssignmentByRid.delete(rid);
+      }
+
+      if (mappedTokenId) {
+        pendingOwnerAssignments.delete(mappedTokenId);
+        if (!tokenId) {
+          tokenId = mappedTokenId;
+        }
+      }
+
+      if (token?.id) {
+        if (
+          !token.sceneId ||
+          !canvasState.activeSceneId ||
+          token.sceneId === canvasState.activeSceneId
+        ) {
+          upsertTokenInList(token);
+          ensurePixiStage()
+            .then((stage) => stage?.addToken(token))
+            .catch(() => {});
+        }
+      }
+
+      renderTokenList();
+
+      const isOwn = Boolean(mappedTokenId);
+      logEvent(isOwn ? 'Назначение владельца подтверждено' : 'Владелец жетона обновлён', {
+        tokenId: tokenId ?? null,
+        ownerUserId: token?.ownerUserId ?? null,
+        sceneId: token?.sceneId ?? null,
+        source: isOwn ? 'self' : 'remote',
+      });
+      updateStageMovePermissions().catch(() => {});
+      break;
+    }
+    case 'token.assignOwner:error': {
+      const message = payload?.error ?? 'Не удалось назначить владельца жетона.';
+      const mappedTokenId = rid ? ownerAssignmentByRid.get(rid) : null;
+      if (rid) {
+        ownerAssignmentByRid.delete(rid);
+      }
+
+      const tokenId = mappedTokenId ?? payload?.tokenId ?? null;
+      if (tokenId) {
+        pendingOwnerAssignments.delete(tokenId);
+      }
+
+      renderTokenList();
+      logEvent('Ошибка назначения владельца жетона', message);
       break;
     }
     default:
