@@ -26,6 +26,7 @@
   --radius-sm: 12px;
   --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-display: "Shippori Mincho B1", "Times New Roman", serif;
+  --layout-max-width: 1920px;
 }
 
 *,
@@ -70,6 +71,11 @@ body {
   height: 100%;
   display: grid;
   grid-template-rows: auto 1fr;
+  width: 100%;
+  max-width: 1920px;
+  max-width: var(--layout-max-width);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .bg {
