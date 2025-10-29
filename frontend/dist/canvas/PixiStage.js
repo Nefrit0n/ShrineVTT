@@ -1,4 +1,4 @@
-import { Application, Container } from 'https://cdn.jsdelivr.net/npm/pixi.js@7.4.0/+esm';
+import { Application, Container, Point } from 'https://cdn.jsdelivr.net/npm/pixi.js@7.4.0/+esm';
 import 'https://cdn.jsdelivr.net/npm/@pixi/unsafe-eval@7.4.0/+esm';
 import GridLayer from './GridLayer.js';
 import MapLayer from './MapLayer.js';
@@ -68,6 +68,8 @@ export default class PixiStage {
       originX: 0,
       originY: 0,
     };
+
+    this.pointerPosition = new Point();
 
     this.tokensLayer.setInteractionOptions({
       canMoveToken: (token) => this.canControlToken(token),
@@ -364,9 +366,22 @@ export default class PixiStage {
       return false;
     }
 
-    const rect = this.canvas.getBoundingClientRect();
-    const pointerX = event.clientX - rect.left;
-    const pointerY = event.clientY - rect.top;
+    const renderer = this.app?.renderer ?? null;
+
+    let pointerX;
+    let pointerY;
+
+    if (renderer?.events?.mapPositionToPoint) {
+      const mapped = renderer.events.mapPositionToPoint(this.pointerPosition, event.clientX, event.clientY);
+      pointerX = mapped.x;
+      pointerY = mapped.y;
+    } else {
+      const rect = this.canvas.getBoundingClientRect();
+      const resolution = renderer?.resolution ?? window.devicePixelRatio ?? 1;
+      pointerX = (event.clientX - rect.left) * resolution;
+      pointerY = (event.clientY - rect.top) * resolution;
+    }
+
     const scale = this.container.scale?.x ?? 1;
     const offsetX = this.container.position?.x ?? 0;
     const offsetY = this.container.position?.y ?? 0;
