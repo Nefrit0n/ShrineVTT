@@ -1994,12 +1994,14 @@ async function handleSessionLoadConfirm() {
 }
 
 async function leaveSession() {
-  if (!currentSessionId) return;
-
   const sessionId = currentSessionId;
+  const previousRole = currentRole;
+  const previousCode = currentSessionCode;
   const token = getStoredToken();
 
-  if (token) {
+  if (!sessionId && !token) return;
+
+  if (sessionId && token) {
     try {
       await fetch(`/api/sessions/${sessionId}/members/me`, {
         method: 'DELETE',
@@ -2010,15 +2012,29 @@ async function leaveSession() {
     }
   }
 
+  localStorage.removeItem(STORAGE_KEYS.TOKEN);
   setSessionId(null);
   updateSessionCode(null);
-  setSocketAuth();
   selectSessionSave(null);
   refreshSessionSaves({ force: true, silent: true });
   sessionSavesModal?.close();
+  setSocketAuth();
+  updateRole('GUEST');
 
-  if (socket.connected) {
+  if (socket?.connected) {
     sendHandshake({ sessionId: null });
+    socket.disconnect();
+  } else {
+    updateSessionControls();
+    syncVisibility();
+  }
+
+  if (joinModal && previousRole !== 'MASTER') {
+    joinModal.reset?.();
+    if (previousCode) {
+      joinModal.setValues({ code: previousCode });
+    }
+    joinModal.open();
   }
 
   logEvent('Вы покинули сессию', { sessionId });
@@ -2227,6 +2243,19 @@ function sendHandshake({ sessionId } = {}) {
   logEvent('Рукопожатие отправлено', envelope);
 }
 
+function buildInviteLink(sessionCode) {
+  if (!sessionCode) {
+    return window.location.href;
+  }
+
+  const normalizedCode = String(sessionCode).toUpperCase();
+  const inviteUrl = new URL(window.location.href);
+  inviteUrl.search = '';
+  inviteUrl.hash = '';
+  inviteUrl.searchParams.set('join', normalizedCode);
+  return inviteUrl.toString();
+}
+
 async function copyText(value) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
@@ -2257,10 +2286,9 @@ async function handleCopySessionCode() {
 async function handleCopyInviteLink() {
   if (!currentSessionCode) return;
   try {
-    const inviteUrl = new URL(window.location.href);
-    inviteUrl.searchParams.set('code', currentSessionCode);
-    await copyText(inviteUrl.toString());
-    logEvent('Ссылка-приглашение скопирована', inviteUrl.toString());
+    const inviteUrl = buildInviteLink(currentSessionCode);
+    await copyText(inviteUrl);
+    logEvent('Ссылка-приглашение скопирована', inviteUrl);
   } catch (err) {
     logEvent('Не удалось скопировать ссылку-приглашение', err?.message ?? String(err));
   }
@@ -2494,9 +2522,14 @@ if (storedSessionCode) {
 }
 
 const urlParams = new URLSearchParams(window.location.search);
-const inviteCode = urlParams.get('code');
-if (inviteCode) {
-  joinModal.setValues({ code: inviteCode.toUpperCase().slice(0, 6) });
+const inviteCodeParam = urlParams.get('join') ?? urlParams.get('code');
+if (inviteCodeParam) {
+  const normalizedInvite = inviteCodeParam.toUpperCase().slice(0, 6);
+  joinModal.setValues({ code: normalizedInvite });
+  if (!getStoredToken()) {
+    joinModal.open();
+  }
+  urlParams.delete('join');
   urlParams.delete('code');
   const next = urlParams.toString();
   const cleanedUrl = `${window.location.pathname}${next ? `?${next}` : ''}${window.location.hash}`;
