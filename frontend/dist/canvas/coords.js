@@ -36,6 +36,50 @@ export function cellCenterToCanvas(cell, gridSize) {
   return (cell + 0.5) * size;
 }
 
+export function cellFromWorld(point, gridSize) {
+  const size = normalizeGridSize(gridSize, 1);
+  const x = Number.isFinite(point?.x) ? point.x : 0;
+  const y = Number.isFinite(point?.y) ? point.y : 0;
+  const xCell = Math.floor(x / size);
+  const yCell = Math.floor(y / size);
+  return { xCell, yCell };
+}
+
+export function clampCell(cell, { columns, rows } = {}) {
+  const normalized = {
+    xCell: Math.floor(cell?.xCell ?? cell?.x ?? 0),
+    yCell: Math.floor(cell?.yCell ?? cell?.y ?? 0),
+  };
+
+  let { xCell, yCell } = normalized;
+  let outOfBounds = false;
+
+  if (xCell < 0) {
+    xCell = 0;
+    outOfBounds = true;
+  }
+
+  if (yCell < 0) {
+    yCell = 0;
+    outOfBounds = true;
+  }
+
+  const hasColumns = Number.isInteger(columns) && columns > 0;
+  const hasRows = Number.isInteger(rows) && rows > 0;
+
+  if (hasColumns && xCell >= columns) {
+    xCell = columns - 1;
+    outOfBounds = true;
+  }
+
+  if (hasRows && yCell >= rows) {
+    yCell = rows - 1;
+    outOfBounds = true;
+  }
+
+  return { xCell, yCell, outOfBounds };
+}
+
 export function sceneToViewScale({ sceneWidth, sceneHeight, viewWidth, viewHeight }) {
   if (!sceneWidth || !sceneHeight || !viewWidth || !viewHeight) {
     return 1;
