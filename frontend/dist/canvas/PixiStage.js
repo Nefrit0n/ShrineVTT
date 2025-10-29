@@ -372,9 +372,9 @@ export default class PixiStage {
     let pointerY;
 
     if (renderer?.events?.mapPositionToPoint) {
-      const mapped = renderer.events.mapPositionToPoint(this.pointerPosition, event.clientX, event.clientY);
-      pointerX = mapped.x;
-      pointerY = mapped.y;
+      renderer.events.mapPositionToPoint(this.pointerPosition, event.clientX, event.clientY);
+      pointerX = this.pointerPosition.x;
+      pointerY = this.pointerPosition.y;
     } else {
       const rect = this.canvas.getBoundingClientRect();
       const resolution = renderer?.resolution ?? window.devicePixelRatio ?? 1;
