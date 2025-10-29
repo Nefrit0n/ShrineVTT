@@ -21,6 +21,7 @@ export function createApp({
   userRepository,
   sessionRepository,
   playerStateRepository,
+  tokenRepository,
   sceneRepository,
   sessionService,
   sceneQueries,
@@ -66,6 +67,7 @@ export function createApp({
   if (!userRepository) throw new Error('userRepository dependency is required');
   if (!sessionRepository) throw new Error('sessionRepository dependency is required');
   if (!playerStateRepository) throw new Error('playerStateRepository dependency is required');
+  if (!tokenRepository) throw new Error('tokenRepository dependency is required');
   if (!sceneRepository) throw new Error('sceneRepository dependency is required');
   if (!sessionService) throw new Error('sessionService dependency is required');
   if (!sceneQueries) throw new Error('sceneQueries dependency is required');
@@ -74,7 +76,14 @@ export function createApp({
   app.use('/api/auth', createAuthRouter({ userRepository, jwt, logger }));
   app.use(
     '/api/sessions',
-    createSessionsRouter({ sessionRepository, playerStateRepository, jwt, logger }),
+    createSessionsRouter({
+      sessionRepository,
+      userRepository,
+      playerStateRepository,
+      tokenRepository,
+      jwt,
+      logger,
+    }),
   );
   app.use(
     '/api/sessions/:sessionId/player-state',

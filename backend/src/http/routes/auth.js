@@ -27,7 +27,33 @@ export default function createAuthRouter({ userRepository, jwt, logger }) {
       return res.status(401).json({ error: 'Invalid password' });
     }
 
-    const token = jwt.signUser({ id: 1, username: 'GM', role: 'MASTER' });
+    let masterUser = null;
+
+    try {
+      masterUser = userRepository.findByUsername('GM');
+    } catch (err) {
+      logger?.warn({ err }, 'Failed to lookup GM user');
+    }
+
+    if (!masterUser) {
+      try {
+        const passwordHash = bcrypt.hashSync(gmPass, 10);
+        masterUser = userRepository.insertUser({
+          username: 'GM',
+          passwordHash,
+          role: USER_ROLES.MASTER,
+        });
+      } catch (err) {
+        logger?.error({ err }, 'Failed to ensure GM user exists');
+        return res.status(500).json({ error: 'Failed to initialise GM identity' });
+      }
+    }
+
+    const token = jwt.signUser({
+      id: masterUser?.id ?? 'GM',
+      username: masterUser?.username ?? 'GM',
+      role: USER_ROLES.MASTER,
+    });
 
     return res.json({
       token,

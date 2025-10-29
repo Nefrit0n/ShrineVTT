@@ -43,6 +43,7 @@ const app = createApp({
   userRepository,
   sessionRepository,
   playerStateRepository,
+  tokenRepository,
   sceneRepository,
   sessionService,
   sceneQueries,
@@ -58,6 +59,7 @@ createWsServer(server, {
   jwt,
   sessionService,
   sceneQueries,
+  userRepository,
 });
 
 server.on('error', (err) => {

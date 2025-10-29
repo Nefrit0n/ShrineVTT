@@ -1,5 +1,6 @@
 import { createJoinModal } from './ui/join.js';
 import PixiStage from './canvas/PixiStage.js';
+import DragTool from './tools/DragTool.js';
 
 const body = document.body;
 const statusEl = document.getElementById('connection-status');
@@ -64,6 +65,7 @@ const sceneNameInput = document.getElementById('scene-name-input');
 const sceneGridInput = document.getElementById('scene-grid-input');
 const sceneWidthInput = document.getElementById('scene-width-input');
 const sceneHeightInput = document.getElementById('scene-height-input');
+const gmDragToggle = document.getElementById('gm-drag-toggle');
 
 const gmTokensToolsItem = Array.from(document.querySelectorAll('.tool-list__item')).find((item) => {
   const label = item?.querySelector?.('.tool-list__label');
@@ -145,6 +147,8 @@ const canvasState = {
 
 let pixiStage = null;
 let pixiStagePromise = null;
+let dragTool = null;
+let gmDragMode = false;
 
 const STORAGE_KEYS = Object.freeze({
   TOKEN: 'jwt',
@@ -214,7 +218,11 @@ async function ensurePixiStage() {
         stage.setTokenMoveHandler({
           canMoveToken: canCurrentUserMoveToken,
           requestMove: handleStageTokenMoveRequest,
-          userContext: { isGM: currentRole === 'MASTER', userId: currentUserId },
+          userContext: {
+            isGM: currentRole === 'MASTER',
+            userId: currentUserId,
+            canDragTokens: currentRole === 'MASTER' ? gmDragMode : true,
+          },
         });
         hideBoardLoadingOverlay();
         return stage;
@@ -243,7 +251,7 @@ function canCurrentUserMoveToken(token) {
   }
 
   if (currentRole === 'MASTER') {
-    return true;
+    return gmDragMode;
   }
 
   if (currentRole === 'PLAYER') {
@@ -264,7 +272,11 @@ async function updateStageMovePermissions() {
   stage.setTokenMoveHandler({
     canMoveToken: canCurrentUserMoveToken,
     requestMove: handleStageTokenMoveRequest,
-    userContext: { isGM: currentRole === 'MASTER', userId: currentUserId },
+    userContext: {
+      isGM: currentRole === 'MASTER',
+      userId: currentUserId,
+      canDragTokens: currentRole === 'MASTER' ? gmDragMode : true,
+    },
   });
 }
 
@@ -305,6 +317,41 @@ function handleStageTokenMoveRequest({ tokenId, xCell, yCell, version }) {
   logEvent('Запрошено перемещение жетона', payload);
 }
 
+function handleGmDragToggleChange(isActive) {
+  const next = Boolean(isActive);
+  if (gmDragMode === next) {
+    return;
+  }
+  gmDragMode = next;
+  updateStageMovePermissions().catch(() => {});
+}
+
+function updateDragToolAccess() {
+  if (!dragTool) {
+    return;
+  }
+
+  const canUse =
+    currentRole === 'MASTER' &&
+    Boolean(currentSessionId) &&
+    Boolean(canvasState.activeSceneId) &&
+    isConnected;
+
+  let shouldUpdateStage = false;
+
+  if (!canUse && gmDragMode) {
+    gmDragMode = false;
+    dragTool.setActive(false, { silent: true });
+    shouldUpdateStage = true;
+  }
+
+  dragTool.setDisabled(!canUse);
+
+  if (shouldUpdateStage) {
+    updateStageMovePermissions().catch(() => {});
+  }
+}
+
 function showCanvasOverlay({ title, text, showButton = false, buttonLabel = 'Загрузить активную' } = {}) {
   if (!boardOverlay) return;
   if (boardOverlayTitle && typeof title === 'string') {
@@ -324,11 +371,14 @@ function showCanvasOverlay({ title, text, showButton = false, buttonLabel = 'З�
     }
   }
 
+  boardOverlay.classList.toggle('board__overlay--interactive', Boolean(showButton));
   boardOverlay.removeAttribute('hidden');
 }
 
 function hideCanvasOverlay() {
-  boardOverlay?.setAttribute('hidden', '');
+  if (!boardOverlay) return;
+  boardOverlay.classList.remove('board__overlay--interactive');
+  boardOverlay.setAttribute('hidden', '');
 }
 
 function setCanvasOverlayLoading(isLoading) {
@@ -348,6 +398,7 @@ async function resetCanvasStage() {
   resetTokenOwnerAssignments();
   renderTokenList();
   updateTokenFormAccess();
+  updateDragToolAccess();
 }
 
 function clearTokenStatusTimeout() {
@@ -1034,6 +1085,7 @@ async function applySceneSnapshot({
   hideCanvasOverlay();
   logEvent(logMessage, { sceneId: canvasState.activeSceneId, reason });
   updateStageMovePermissions().catch(() => {});
+  updateDragToolAccess();
   return true;
 }
 
@@ -1043,6 +1095,7 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
   }
 
   canvasState.isLoading = true;
+  showBoardLoadingOverlay();
 
   let stage = null;
 
@@ -1191,6 +1244,8 @@ async function loadActiveSceneSnapshot({ reason = 'manual', silent = false } = {
   } finally {
     canvasState.isLoading = false;
     setCanvasOverlayLoading(false);
+    hideBoardLoadingOverlay();
+    updateDragToolAccess();
   }
 }
 
@@ -2184,6 +2239,7 @@ function setSessionId(value, { persist = true, syncAuth = true } = {}) {
   }
   updateStageMovePermissions().catch(() => {});
   renderTokenList();
+  updateDragToolAccess();
 }
 
 function setStatus(status) {
@@ -2201,6 +2257,7 @@ function setStatus(status) {
   updateSessionControls();
   syncVisibility();
   renderTokenList();
+  updateDragToolAccess();
 }
 
 function updateRole(role) {
@@ -2223,6 +2280,7 @@ function updateRole(role) {
   syncVisibility();
   renderTokenList();
   updateStageMovePermissions().catch(() => {});
+  updateDragToolAccess();
 }
 
 const createRid = () => (crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -2468,6 +2526,13 @@ const gmModal = modal(document.getElementById('modal-gm'));
 const sessionSavesModal = sessionSavesModalEl ? modal(sessionSavesModalEl) : null;
 const joinModal = createJoinModal({ onSubmit: submitJoin });
 
+if (gmDragToggle) {
+  dragTool = new DragTool({ button: gmDragToggle, onChange: handleGmDragToggleChange });
+  dragTool.setDisabled(true);
+}
+
+updateDragToolAccess();
+
 initTokenTools();
 
 document.querySelectorAll('[data-close]').forEach((node) =>
@@ -2572,7 +2637,13 @@ socket.on('disconnect', (reason) => {
   resetTokenOwnerAssignments();
   resetSessionMembersState();
   renderTokenList();
+  gmDragMode = false;
+  if (dragTool) {
+    dragTool.setActive(false, { silent: true });
+    dragTool.setDisabled(true);
+  }
   updateStageMovePermissions().catch(() => {});
+  updateDragToolAccess();
 });
 
 socket.on('connect_error', (error) => {

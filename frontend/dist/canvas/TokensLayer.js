@@ -48,7 +48,7 @@ export default class TokensLayer {
       throttleMs: DEFAULT_THROTTLE_MS,
     };
 
-    this.userContext = { isGM: false, userId: null };
+    this.userContext = { isGM: false, userId: null, canDragTokens: false };
     this.drag = this.createEmptyDragState();
     this.boundOnDragMove = (event) => this.onDragMove(event);
   }
@@ -63,10 +63,13 @@ export default class TokensLayer {
     };
   }
 
-  setUserContext({ isGM = false, userId = null } = {}) {
+  setUserContext({ isGM = false, userId = null, canDragTokens } = {}) {
+    const normalizedCanDrag =
+      canDragTokens === undefined ? !isGM : Boolean(canDragTokens);
     this.userContext = {
       isGM: Boolean(isGM),
       userId: userId ?? null,
+      canDragTokens: normalizedCanDrag,
     };
     this.tokenSprites.forEach((sprite) => {
       this.updateSpriteCursor(sprite);
@@ -362,6 +365,10 @@ export default class TokensLayer {
       return false;
     }
 
+    if (!this.userContext.canDragTokens) {
+      return false;
+    }
+
     if (this.userContext.isGM) {
       return true;
     }
@@ -567,6 +574,7 @@ export default class TokensLayer {
     }
 
     sprite.eventMode = 'static';
+    sprite.interactive = true;
     sprite.cursor = 'grab';
     sprite.anchor.set(0.5);
     sprite.width = gridSize;

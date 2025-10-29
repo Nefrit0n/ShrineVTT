@@ -40,6 +40,12 @@ export default class PlayerStateRepository {
       SET notes = ?
       WHERE sessionId = ? AND userId = ?
     `);
+
+    this.reassignUserStmt = this.db.prepare(`
+      UPDATE player_state
+      SET userId = ?, username = ?
+      WHERE sessionId = ? AND userId = ?
+    `);
   }
 
   ensurePlayerState({ sessionId, userId, username }) {
@@ -93,6 +99,25 @@ export default class PlayerStateRepository {
     }
 
     return this.getBySessionAndUser(sessionId, userId);
+  }
+
+  reassignUserState({ sessionId, fromUserId, toUserId, username }) {
+    if (!sessionId || !fromUserId || !toUserId) {
+      throw new Error('sessionId, fromUserId and toUserId are required to reassign player state');
+    }
+
+    if (fromUserId === toUserId) {
+      return false;
+    }
+
+    const existingTarget = this.getBySessionAndUser(sessionId, toUserId);
+    if (existingTarget) {
+      return false;
+    }
+
+    const normalizedUsername = typeof username === 'string' && username.length ? username : 'Игрок';
+    const info = this.reassignUserStmt.run(toUserId, normalizedUsername, sessionId, fromUserId);
+    return info.changes > 0;
   }
 }
 

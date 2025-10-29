@@ -70,6 +70,15 @@ export default class TokenRepository {
       DELETE FROM tokens
       WHERE sceneId = ?
     `);
+
+    this.reassignOwnerStmt = this.db.prepare(`
+      UPDATE tokens
+      SET ownerUserId = ?
+      WHERE ownerUserId = ?
+        AND sceneId IN (
+          SELECT id FROM scenes WHERE sessionId = ?
+        )
+    `);
   }
 
   create({ scene, ownerUserId = null, name, xCell, yCell, sprite = null }) {
@@ -187,5 +196,18 @@ export default class TokenRepository {
     if (!sceneId) return 0;
     const info = this.deleteBySceneStmt.run(sceneId);
     return info.changes;
+  }
+
+  reassignOwner({ sessionId, fromUserId, toUserId }) {
+    if (!sessionId || !fromUserId || !toUserId) {
+      throw new Error('sessionId, fromUserId and toUserId are required to reassign token ownership');
+    }
+
+    if (fromUserId === toUserId) {
+      return 0;
+    }
+
+    const info = this.reassignOwnerStmt.run(toUserId, fromUserId, sessionId);
+    return info.changes ?? 0;
   }
 }
