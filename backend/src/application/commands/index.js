@@ -141,10 +141,11 @@ export function registerTokenMoveCommand({ sceneRepository, tokenRepository, log
       throw new DomainError('Token not found for movement');
     }
 
-    if (actorRole !== 'MASTER') {
+    const isMaster = actorRole === 'MASTER';
+    if (!isMaster) {
       const ownerId = token.ownerUserId ?? null;
       if (!actorUserId || ownerId !== actorUserId) {
-        throw new DomainError('You do not have permission to move this token');
+        throw new DomainError('FORBIDDEN', { code: 'FORBIDDEN' });
       }
     }
 
@@ -164,8 +165,29 @@ export function registerTokenMoveCommand({ sceneRepository, tokenRepository, log
       return parsed;
     };
 
-    const xCell = parseCell(payload.xCell, 'xCell');
-    const yCell = parseCell(payload.yCell, 'yCell');
+    const rawXCell = parseCell(payload.xCell, 'xCell');
+    const rawYCell = parseCell(payload.yCell, 'yCell');
+
+    const gridSize = Number.isFinite(scene.gridSize) ? scene.gridSize : Number.parseFloat(scene.gridSize);
+    const safeGridSize = Number.isFinite(gridSize) && gridSize > 0 ? gridSize : 0;
+    const widthPx = Number.isFinite(scene.widthPx) ? scene.widthPx : Number.parseFloat(scene.widthPx);
+    const heightPx = Number.isFinite(scene.heightPx) ? scene.heightPx : Number.parseFloat(scene.heightPx);
+    const cols = safeGridSize > 0 && Number.isFinite(widthPx) ? Math.max(0, Math.floor(widthPx / safeGridSize)) : 0;
+    const rows = safeGridSize > 0 && Number.isFinite(heightPx) ? Math.max(0, Math.floor(heightPx / safeGridSize)) : 0;
+
+    const clampToBounds = (value, max) => {
+      if (!Number.isInteger(value)) {
+        return 0;
+      }
+      const nonNegative = value < 0 ? 0 : value;
+      if (max <= 0) {
+        return nonNegative;
+      }
+      return Math.min(nonNegative, Math.max(0, max - 1));
+    };
+
+    const xCell = clampToBounds(rawXCell, cols);
+    const yCell = clampToBounds(rawYCell, rows);
 
     let expectedVersion = token.version;
     if (payload.version !== undefined) {
@@ -175,7 +197,7 @@ export function registerTokenMoveCommand({ sceneRepository, tokenRepository, log
       }
 
       if (parsedVersion !== token.version) {
-        throw new StaleUpdateError('Token has been modified since it was read');
+        throw new StaleUpdateError('STALE_UPDATE');
       }
 
       expectedVersion = parsedVersion;

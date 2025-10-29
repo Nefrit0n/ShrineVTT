@@ -1,154 +1,223 @@
 import { Container, Graphics, Sprite, Texture } from 'https://cdn.jsdelivr.net/npm/pixi.js@7.4.0/+esm';
-import { cellToCanvas, normalizeGridSize, cellFromWorld, clampCell } from './coords.js';
+import { normalizeGridSize, cellFromWorld, clampCell, worldFromCell, gridColsRows } from './coords.js';
 
 const DEFAULT_GRID_SIZE = 50;
-const HOVER_IN_FILL_ALPHA = 0.18;
-const HOVER_OUT_FILL_ALPHA = 0.08;
-const HOVER_IN_COLOR = 0x4ab49b;
-const HOVER_OUT_COLOR = 0xd9443f;
+const DEFAULT_THROTTLE_MS = 50;
+
+function ensureInteger(value, fallback = 0) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) ? parsed : fallback;
+}
+
+function ensureNonNegativeNumber(value, fallback = 0) {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed;
+}
 
 export default class TokensLayer {
-  constructor() {
+  constructor({ app } = {}) {
+    this.app = app ?? null;
     this.container = new Container();
-    this.container.eventMode = 'static';
     this.container.sortableChildren = true;
+    this.container.eventMode = 'none';
+
+    this.tokensContainer = new Container();
+    this.tokensContainer.zIndex = 100;
+    this.tokensContainer.sortableChildren = false;
+    this.tokensContainer.eventMode = 'static';
+    this.container.addChild(this.tokensContainer);
+
     this.gridSize = DEFAULT_GRID_SIZE;
-    this.sceneBounds = { columns: 0, rows: 0 };
+    this.scene = {
+      gridSize: DEFAULT_GRID_SIZE,
+      widthPx: 0,
+      heightPx: 0,
+      cols: 0,
+      rows: 0,
+    };
+
     this.tokenSprites = new Map();
     this.tokenMetadata = new Map();
+
     this.moveOptions = {
       canMoveToken: () => false,
       onMoveRequest: null,
-      throttleMs: 50,
+      throttleMs: DEFAULT_THROTTLE_MS,
     };
-    this.dragState = this.createEmptyDragState();
 
-    this.hoverCell = new Graphics();
-    this.hoverCell.visible = false;
-    this.hoverCell.eventMode = 'none';
-    this.hoverCell.zIndex = 9999;
-    this.container.addChild(this.hoverCell);
+    this.userContext = { isGM: false, userId: null };
+    this.drag = this.createEmptyDragState();
+    this.boundOnDragMove = (event) => this.onDragMove(event);
   }
 
   createEmptyDragState() {
     return {
-      active: false,
-      tokenId: null,
-      pointerId: null,
-      container: null,
-      startCell: null,
-      previewCell: null,
-      lastSentCell: null,
+      sprite: null,
       lastSentAt: 0,
-      isOutOfBounds: false,
-      listeners: null,
+      lastSentCell: null,
+      currentCell: null,
+      originCell: null,
     };
   }
 
-  setSceneBounds({ gridSize = this.gridSize, columns = this.sceneBounds.columns, rows = this.sceneBounds.rows } = {}) {
-    this.gridSize = normalizeGridSize(gridSize, this.gridSize);
-    this.sceneBounds = {
-      columns: Number.isInteger(columns) && columns > 0 ? columns : 0,
-      rows: Number.isInteger(rows) && rows > 0 ? rows : 0,
+  setUserContext({ isGM = false, userId = null } = {}) {
+    this.userContext = {
+      isGM: Boolean(isGM),
+      userId: userId ?? null,
     };
-    this.hideHoverCell();
+    this.tokenSprites.forEach((sprite) => {
+      this.updateSpriteCursor(sprite);
+    });
   }
 
-  setInteractionOptions({ canMoveToken, onMoveRequest, throttleMs = 50 } = {}) {
+  setInteractionOptions({ canMoveToken, onMoveRequest, throttleMs = DEFAULT_THROTTLE_MS, userContext } = {}) {
     this.moveOptions.canMoveToken = typeof canMoveToken === 'function' ? canMoveToken : () => false;
     this.moveOptions.onMoveRequest = typeof onMoveRequest === 'function' ? onMoveRequest : null;
-    this.moveOptions.throttleMs = Number.isFinite(throttleMs) && throttleMs >= 0 ? throttleMs : 50;
+    this.moveOptions.throttleMs = Number.isFinite(throttleMs) && throttleMs >= 0 ? throttleMs : DEFAULT_THROTTLE_MS;
 
-    this.tokenSprites.forEach((container, tokenId) => {
-      const metadata = this.tokenMetadata.get(tokenId) ?? null;
-      this.updateContainerInteractivity(container, metadata);
-    });
+    if (userContext) {
+      this.setUserContext(userContext);
+    } else {
+      this.tokenSprites.forEach((sprite) => this.updateSpriteCursor(sprite));
+    }
   }
 
-  clear() {
-    this.resetDragState();
-    this.tokenSprites.forEach((container) => this.detachTokenContainer(container));
-    this.container.removeChildren();
-    this.container.addChild(this.hoverCell);
-    this.tokenSprites.clear();
-    this.tokenMetadata.clear();
-    this.gridSize = DEFAULT_GRID_SIZE;
-    this.sceneBounds = { columns: 0, rows: 0 };
-  }
+  setSceneBounds(scene = {}) {
+    const gridSize = normalizeGridSize(scene.gridSize ?? this.scene.gridSize ?? this.gridSize, this.gridSize);
+    const widthPx = ensureNonNegativeNumber(scene.widthPx, ensureNonNegativeNumber(this.scene.widthPx, 0));
+    const heightPx = ensureNonNegativeNumber(scene.heightPx, ensureNonNegativeNumber(this.scene.heightPx, 0));
+    const hasExplicitColumns = Number.isInteger(scene.columns) && scene.columns > 0;
+    const hasExplicitRows = Number.isInteger(scene.rows) && scene.rows > 0;
+    let cols = hasExplicitColumns ? scene.columns : 0;
+    let rows = hasExplicitRows ? scene.rows : 0;
 
-  setTokens(tokens = [], { gridSize = this.gridSize } = {}) {
-    this.clear();
-    this.gridSize = normalizeGridSize(gridSize, this.gridSize);
-
-    if (!Array.isArray(tokens) || !tokens.length) {
-      return;
+    if (!hasExplicitColumns || !hasExplicitRows) {
+      const gridMetrics = gridColsRows({ gridSize, widthPx, heightPx });
+      if (!hasExplicitColumns) cols = gridMetrics.cols;
+      if (!hasExplicitRows) rows = gridMetrics.rows;
     }
 
-    tokens.forEach((token) => {
-      this.addSprite(token, { gridSize: this.gridSize });
-    });
+    this.gridSize = gridSize;
+    this.scene = { gridSize, widthPx, heightPx, cols, rows };
   }
 
   getGridSize() {
     return this.gridSize;
   }
 
-  addSprite(token, { gridSize, highlight = false } = {}) {
+  clear({ preserveScene = false } = {}) {
+    this.stopDragging();
+    this.tokenSprites.forEach((sprite) => this.detachSprite(sprite));
+    this.tokensContainer.removeChildren();
+    this.tokenSprites.clear();
+    this.tokenMetadata.clear();
+
+    if (preserveScene) {
+      const nextScene = {
+        gridSize: normalizeGridSize(this.scene.gridSize ?? this.gridSize, this.gridSize),
+        widthPx: ensureNonNegativeNumber(this.scene.widthPx, 0),
+        heightPx: ensureNonNegativeNumber(this.scene.heightPx, 0),
+        cols: Number.isInteger(this.scene.cols) ? this.scene.cols : 0,
+        rows: Number.isInteger(this.scene.rows) ? this.scene.rows : 0,
+      };
+      this.gridSize = nextScene.gridSize;
+      this.scene = nextScene;
+    } else {
+      this.gridSize = DEFAULT_GRID_SIZE;
+      this.scene = {
+        gridSize: DEFAULT_GRID_SIZE,
+        widthPx: 0,
+        heightPx: 0,
+        cols: 0,
+        rows: 0,
+      };
+    }
+  }
+
+  setTokens(tokens = [], { gridSize = this.gridSize } = {}) {
+    this.clear({ preserveScene: true });
+    this.gridSize = normalizeGridSize(gridSize, this.scene.gridSize ?? this.gridSize);
+    const derivedGrid = gridColsRows({
+      gridSize: this.gridSize,
+      widthPx: this.scene.widthPx,
+      heightPx: this.scene.heightPx,
+    });
+
+    this.scene = {
+      ...this.scene,
+      gridSize: this.gridSize,
+      cols: Number.isInteger(this.scene.cols) && this.scene.cols > 0 ? this.scene.cols : derivedGrid.cols,
+      rows: Number.isInteger(this.scene.rows) && this.scene.rows > 0 ? this.scene.rows : derivedGrid.rows,
+    };
+
+    if (!Array.isArray(tokens) || !tokens.length) {
+      return;
+    }
+
+    tokens.forEach((token) => this.addSprite(token, { gridSize: this.gridSize }));
+  }
+
+  addSprite(token, { gridSize = this.gridSize, highlight = false } = {}) {
     if (!token || typeof token !== 'object') {
       return null;
     }
 
-    const size = normalizeGridSize(gridSize ?? this.gridSize, this.gridSize);
+    const tokenId = token.id ?? null;
+    const size = normalizeGridSize(gridSize, this.gridSize);
     this.gridSize = size;
 
-    const tokenId = token?.id ?? null;
     if (tokenId && this.tokenSprites.has(tokenId)) {
-      const existing = this.tokenSprites.get(tokenId);
-      this.detachTokenContainer(existing);
-      if (existing?.parent) {
-        existing.parent.removeChild(existing);
-      }
+      const existingSprite = this.tokenSprites.get(tokenId);
+      this.detachSprite(existingSprite);
       this.tokenSprites.delete(tokenId);
+      this.tokenMetadata.delete(tokenId);
     }
 
-    const tokenContainer = new Container();
-    tokenContainer.eventMode = 'static';
-    tokenContainer.cursor = 'grab';
-
-    const display = this.createTokenDisplay(token, size);
-    tokenContainer.addChild(display);
-
-    const x = cellToCanvas(token?.xCell ?? 0, size);
-    const y = cellToCanvas(token?.yCell ?? 0, size);
-    tokenContainer.position.set(x, y);
-    tokenContainer.zIndex = 1;
-
-    this.container.addChild(tokenContainer);
-    this.container.addChild(this.hoverCell);
+    const sprite = this.createInteractiveSprite(token, size);
+    const metadata = {
+      id: tokenId,
+      sceneId: token.sceneId ?? null,
+      ownerUserId: token.ownerUserId ?? null,
+      name: token.name ?? '',
+      sprite: token.sprite ?? null,
+      xCell: ensureInteger(token.xCell, 0),
+      yCell: ensureInteger(token.yCell, 0),
+      version: ensureInteger(token.version, 0),
+      updatedAt: token.updatedAt ?? null,
+    };
 
     if (tokenId) {
-      const metadata = {
-        id: tokenId,
-        sceneId: token.sceneId ?? null,
-        ownerUserId: token.ownerUserId ?? null,
-        name: token.name ?? '',
-        xCell: token.xCell ?? 0,
-        yCell: token.yCell ?? 0,
-        sprite: token.sprite ?? null,
-        version: Number.isInteger(token.version) ? token.version : 0,
-        updatedAt: token.updatedAt ?? null,
-      };
-      this.tokenMetadata.set(tokenId, metadata);
-      tokenContainer.__tokenData = metadata;
-      this.tokenSprites.set(tokenId, tokenContainer);
-      this.updateContainerInteractivity(tokenContainer, metadata);
+      sprite.tokenId = tokenId;
     }
+
+    sprite.meta = {
+      sceneId: metadata.sceneId,
+      version: metadata.version,
+      ownerUserId: metadata.ownerUserId,
+    };
+
+    const world = worldFromCell({ xCell: metadata.xCell, yCell: metadata.yCell }, size);
+    sprite.position.set(world.x, world.y);
+
+    this.attachSpriteHandlers(sprite);
+
+    this.tokensContainer.addChild(sprite);
+
+    if (tokenId) {
+      this.tokenSprites.set(tokenId, sprite);
+      this.tokenMetadata.set(tokenId, metadata);
+    }
+
+    this.updateSpriteCursor(sprite);
 
     if (highlight) {
-      this.animateSpriteAppearance(tokenContainer);
+      this.animateSpriteAppearance(sprite);
     }
 
-    return tokenContainer;
+    return sprite;
   }
 
   updateToken(token) {
@@ -156,67 +225,314 @@ export default class TokensLayer {
       return false;
     }
 
-    const metadata = this.tokenMetadata.get(token.id) ?? {};
+    const existingMetadata = this.tokenMetadata.get(token.id) ?? {};
     const nextMetadata = {
-      ...metadata,
+      ...existingMetadata,
       ...token,
-      version: Number.isInteger(token.version) ? token.version : metadata.version ?? 0,
+      xCell: ensureInteger(token.xCell, existingMetadata.xCell ?? 0),
+      yCell: ensureInteger(token.yCell, existingMetadata.yCell ?? 0),
+      version: ensureInteger(token.version, existingMetadata.version ?? 0),
     };
+
     this.tokenMetadata.set(token.id, nextMetadata);
 
-    const container = this.tokenSprites.get(token.id);
-    if (!container) {
+    const sprite = this.tokenSprites.get(token.id);
+    if (!sprite) {
       this.addSprite(nextMetadata, { gridSize: this.gridSize });
       return true;
     }
 
-    container.__tokenData = nextMetadata;
-    const x = cellToCanvas(nextMetadata.xCell ?? 0, this.gridSize);
-    const y = cellToCanvas(nextMetadata.yCell ?? 0, this.gridSize);
-    container.position.set(x, y);
-    this.updateContainerInteractivity(container, nextMetadata);
+    sprite.meta = {
+      sceneId: nextMetadata.sceneId ?? sprite.meta?.sceneId ?? null,
+      version: nextMetadata.version,
+      ownerUserId: nextMetadata.ownerUserId ?? sprite.meta?.ownerUserId ?? null,
+    };
+
+    const world = worldFromCell({ xCell: nextMetadata.xCell, yCell: nextMetadata.yCell }, this.gridSize);
+    sprite.position.set(world.x, world.y);
+    this.updateSpriteCursor(sprite);
     return true;
   }
 
-  syncTokenPosition(tokenId) {
+  applyMove({ tokenId, xCell, yCell, version }) {
+    if (!tokenId) {
+      return false;
+    }
+
+    const sprite = this.tokenSprites.get(tokenId);
     const metadata = this.tokenMetadata.get(tokenId);
-    const container = this.tokenSprites.get(tokenId);
-    if (!metadata || !container) {
+    if (!sprite || !metadata) {
+      return false;
+    }
+
+    const nextX = ensureInteger(xCell, metadata.xCell ?? 0);
+    const nextY = ensureInteger(yCell, metadata.yCell ?? 0);
+    metadata.xCell = nextX;
+    metadata.yCell = nextY;
+
+    if (Number.isInteger(version)) {
+      metadata.version = version;
+      sprite.meta.version = version;
+    }
+
+    const world = worldFromCell({ xCell: nextX, yCell: nextY }, this.gridSize);
+    sprite.position.set(world.x, world.y);
+    return true;
+  }
+
+  revertTokenPosition(tokenId) {
+    const metadata = this.tokenMetadata.get(tokenId);
+    const sprite = this.tokenSprites.get(tokenId);
+    if (!metadata || !sprite) {
       return;
     }
-    const x = cellToCanvas(metadata.xCell ?? 0, this.gridSize);
-    const y = cellToCanvas(metadata.yCell ?? 0, this.gridSize);
-    container.position.set(x, y);
+
+    const world = worldFromCell({ xCell: metadata.xCell ?? 0, yCell: metadata.yCell ?? 0 }, this.gridSize);
+    sprite.position.set(world.x, world.y);
   }
 
   hasTokenAt(worldX, worldY) {
     if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) {
       return false;
     }
-    const size = this.gridSize;
-    for (const container of this.tokenSprites.values()) {
-      const x = container?.position?.x ?? 0;
-      const y = container?.position?.y ?? 0;
-      if (worldX >= x && worldX <= x + size && worldY >= y && worldY <= y + size) {
+
+    for (const sprite of this.tokenSprites.values()) {
+      if (!sprite) continue;
+      const width = (sprite.width ?? this.gridSize) * (sprite.scale?.x ?? 1);
+      const height = (sprite.height ?? this.gridSize) * (sprite.scale?.y ?? 1);
+      const left = sprite.position.x - width / 2;
+      const top = sprite.position.y - height / 2;
+      const right = left + width;
+      const bottom = top + height;
+      if (worldX >= left && worldX <= right && worldY >= top && worldY <= bottom) {
         return true;
       }
     }
+
     return false;
   }
 
-  animateSpriteAppearance(container) {
-    if (!container) {
+  attachSpriteHandlers(sprite) {
+    if (!sprite) {
       return;
     }
 
-    container.alpha = 0;
+    const handlePointerDown = (event) => this.onDragStart(event);
+    const handlePointerUp = (event) => this.onDragEnd(event);
+
+    sprite.on('pointerdown', handlePointerDown);
+    sprite.on('pointerup', handlePointerUp);
+    sprite.on('pointerupoutside', handlePointerUp);
+    sprite.on('pointercancel', handlePointerUp);
+
+    sprite.__dragHandlers = { handlePointerDown, handlePointerUp };
+  }
+
+  detachSprite(sprite) {
+    if (!sprite) {
+      return;
+    }
+
+    if (sprite.__dragHandlers) {
+      const { handlePointerDown, handlePointerUp } = sprite.__dragHandlers;
+      if (handlePointerDown) {
+        sprite.off('pointerdown', handlePointerDown);
+      }
+      if (handlePointerUp) {
+        sprite.off('pointerup', handlePointerUp);
+        sprite.off('pointerupoutside', handlePointerUp);
+        sprite.off('pointercancel', handlePointerUp);
+      }
+      sprite.__dragHandlers = null;
+    }
+
+    sprite.destroy({ children: true });
+  }
+
+  updateSpriteCursor(sprite) {
+    if (!sprite) {
+      return;
+    }
+
+    sprite.cursor = this.canControl(sprite) ? 'grab' : 'not-allowed';
+  }
+
+  canControl(sprite) {
+    if (!sprite) {
+      return false;
+    }
+
+    if (this.userContext.isGM) {
+      return true;
+    }
+
+    const ownerUserId = sprite.meta?.ownerUserId ?? null;
+    if (ownerUserId !== null && this.userContext.userId) {
+      return ownerUserId === this.userContext.userId;
+    }
+
+    if (typeof this.moveOptions.canMoveToken === 'function' && sprite.tokenId) {
+      const metadata = this.tokenMetadata.get(sprite.tokenId);
+      if (metadata) {
+        return Boolean(this.moveOptions.canMoveToken(metadata));
+      }
+    }
+
+    return false;
+  }
+
+  onDragStart(event) {
+    const sprite = event?.currentTarget ?? null;
+    if (!sprite || !sprite.tokenId) {
+      return;
+    }
+
+    event?.stopPropagation?.();
+
+    if (!this.canControl(sprite)) {
+      return;
+    }
+
+    const metadata = this.tokenMetadata.get(sprite.tokenId);
+    const originCell = metadata
+      ? { xCell: ensureInteger(metadata.xCell, 0), yCell: ensureInteger(metadata.yCell, 0) }
+      : { xCell: 0, yCell: 0 };
+
+    sprite.cursor = 'grabbing';
+
+    this.drag = {
+      sprite,
+      lastSentAt: 0,
+      lastSentCell: null,
+      currentCell: originCell,
+      originCell,
+    };
+
+    if (this.app?.stage) {
+      this.app.stage.on('globalpointermove', this.boundOnDragMove);
+    }
+  }
+
+  onDragMove(event) {
+    const sprite = this.drag.sprite;
+    if (!sprite || !event?.global) {
+      return;
+    }
+
+    const local = this.tokensContainer.toLocal(event.global);
+    const rawCell = cellFromWorld(local.x, local.y, this.gridSize);
+    const clamped = clampCell(rawCell, this.scene);
+    const world = worldFromCell(clamped, this.gridSize);
+
+    sprite.position.set(world.x, world.y);
+
+    if (sprite.tokenId && this.tokenMetadata.has(sprite.tokenId)) {
+      const metadata = this.tokenMetadata.get(sprite.tokenId);
+      metadata.xCell = clamped.xCell;
+      metadata.yCell = clamped.yCell;
+    }
+
+    this.drag.currentCell = clamped;
+
+    if (!this.canControl(sprite)) {
+      return;
+    }
+
+    const now = Date.now();
+    const lastCell = this.drag.lastSentCell;
+    const sameCell = lastCell && lastCell.xCell === clamped.xCell && lastCell.yCell === clamped.yCell;
+    if (sameCell) {
+      return;
+    }
+
+    if (now - this.drag.lastSentAt < this.moveOptions.throttleMs) {
+      return;
+    }
+
+    if (this.emitMoveRequest(sprite, clamped)) {
+      this.drag.lastSentAt = now;
+      this.drag.lastSentCell = clamped;
+    }
+  }
+
+  onDragEnd(event) {
+    const sprite = this.drag.sprite;
+    if (!sprite) {
+      return;
+    }
+
+    if (this.app?.stage) {
+      this.app.stage.off('globalpointermove', this.boundOnDragMove);
+    }
+
+    sprite.cursor = this.canControl(sprite) ? 'grab' : 'not-allowed';
+
+    const metadata = sprite.tokenId ? this.tokenMetadata.get(sprite.tokenId) : null;
+    let finalCell = this.drag.currentCell ?? this.drag.originCell;
+
+    if (event?.global) {
+      const local = this.tokensContainer.toLocal(event.global);
+      const rawCell = cellFromWorld(local.x, local.y, this.gridSize);
+      finalCell = clampCell(rawCell, this.scene);
+      const world = worldFromCell(finalCell, this.gridSize);
+      sprite.position.set(world.x, world.y);
+      if (metadata) {
+        metadata.xCell = finalCell.xCell;
+        metadata.yCell = finalCell.yCell;
+      }
+    }
+
+    const now = Date.now();
+    const lastCell = this.drag.lastSentCell;
+    const sameCell = lastCell && finalCell && lastCell.xCell === finalCell.xCell && lastCell.yCell === finalCell.yCell;
+
+    if (finalCell && this.canControl(sprite) && (!sameCell || now - this.drag.lastSentAt >= this.moveOptions.throttleMs)) {
+      this.emitMoveRequest(sprite, finalCell);
+      this.drag.lastSentAt = now;
+      this.drag.lastSentCell = finalCell;
+    }
+
+    this.drag = this.createEmptyDragState();
+  }
+
+  stopDragging() {
+    if (this.app?.stage) {
+      this.app.stage.off('globalpointermove', this.boundOnDragMove);
+    }
+    this.drag = this.createEmptyDragState();
+  }
+
+  emitMoveRequest(sprite, cell) {
+    if (!sprite || !sprite.tokenId || !this.moveOptions.onMoveRequest) {
+      return false;
+    }
+
+    const metadata = this.tokenMetadata.get(sprite.tokenId);
+    const version = metadata && Number.isInteger(metadata.version) ? metadata.version : sprite.meta?.version ?? 0;
+
+    this.moveOptions.onMoveRequest({
+      tokenId: sprite.tokenId,
+      xCell: cell.xCell,
+      yCell: cell.yCell,
+      version,
+    });
+
+    return true;
+  }
+
+  animateSpriteAppearance(sprite) {
+    if (!sprite) {
+      return;
+    }
+
+    sprite.alpha = 0;
     const duration = 220;
     const start = performance.now();
 
     const tick = (now) => {
       const elapsed = now - start;
       const progress = Math.min(1, elapsed / duration);
-      container.alpha = progress;
+      sprite.alpha = progress;
       if (progress < 1) {
         requestAnimationFrame(tick);
       }
@@ -225,257 +541,36 @@ export default class TokensLayer {
     requestAnimationFrame(tick);
   }
 
-  createTokenDisplay(token, gridSize) {
+  createInteractiveSprite(token, gridSize) {
+    let sprite;
+
     if (token?.sprite && typeof token.sprite === 'string') {
       const texture = Texture.from(token.sprite);
       texture.baseTexture.scaleMode = 'linear';
-      const sprite = new Sprite(texture);
-      sprite.width = gridSize;
-      sprite.height = gridSize;
-      sprite.anchor.set(0);
-      sprite.position.set(0, 0);
-      sprite.eventMode = 'none';
-      return sprite;
-    }
+      sprite = new Sprite(texture);
+    } else {
+      const graphics = new Graphics();
+      const radius = Math.max(gridSize * 0.38, 12);
+      graphics.lineStyle({ width: Math.max(2, gridSize * 0.06), color: 0x2d1b0d, alpha: 0.8 });
+      graphics.beginFill(0xd9b98c, 0.9);
+      graphics.drawCircle(0, 0, radius);
+      graphics.endFill();
 
-    const radius = Math.max(gridSize * 0.38, 12);
-    const graphics = new Graphics();
-    graphics.lineStyle({ width: Math.max(2, gridSize * 0.06), color: 0x2d1b0d, alpha: 0.8 });
-    graphics.beginFill(0xd9b98c, 0.9);
-    graphics.drawCircle(gridSize / 2, gridSize / 2, radius);
-    graphics.endFill();
-    graphics.eventMode = 'none';
-    return graphics;
-  }
+      const texture = this.app?.renderer?.generateTexture?.(graphics, {
+        resolution: window.devicePixelRatio || 1,
+      });
 
-  updateContainerInteractivity(container, metadata) {
-    if (!container) {
-      return;
-    }
-
-    if (container.__pointerDown) {
-      container.off('pointerdown', container.__pointerDown);
-      container.__pointerDown = null;
-    }
-
-    const canMove = metadata && this.moveOptions.canMoveToken(metadata);
-    container.cursor = canMove ? 'grab' : 'not-allowed';
-
-    if (canMove && metadata?.id) {
-      const handler = (event) => this.startDraggingToken(event, metadata.id);
-      container.on('pointerdown', handler);
-      container.__pointerDown = handler;
-    }
-  }
-
-  detachTokenContainer(container) {
-    if (!container) {
-      return;
-    }
-    if (this.dragState.container === container) {
-      this.resetDragState();
-    }
-    if (container.__pointerDown) {
-      container.off('pointerdown', container.__pointerDown);
-      container.__pointerDown = null;
-    }
-  }
-
-  resetDragState() {
-    if (this.dragState.active && this.dragState.container && this.dragState.listeners) {
-      const { container, listeners } = this.dragState;
-      container.off('pointermove', listeners.move);
-      container.off('pointerup', listeners.up);
-      container.off('pointerupoutside', listeners.up);
-      container.off('pointercancel', listeners.up);
-      if (this.dragState.pointerId !== null) {
-        container.releasePointerCapture?.(this.dragState.pointerId);
+      sprite = texture ? new Sprite(texture) : new Sprite(Texture.WHITE);
+      if (!texture) {
+        sprite.tint = 0xd9b98c;
       }
     }
-    this.dragState = this.createEmptyDragState();
-    this.hideHoverCell();
-  }
 
-  startDraggingToken(event, tokenId) {
-    if (!this.moveOptions.onMoveRequest) {
-      return;
-    }
-
-    const metadata = this.tokenMetadata.get(tokenId);
-    if (!metadata || !this.moveOptions.canMoveToken(metadata)) {
-      return;
-    }
-
-    const container = this.tokenSprites.get(tokenId);
-    if (!container) {
-      return;
-    }
-
-    event.stopPropagation?.();
-    event.preventDefault?.();
-
-    const pointerId = event?.pointerId ?? null;
-
-    const listeners = {
-      move: (evt) => this.continueDraggingToken(evt, tokenId),
-      up: (evt) => this.finishDraggingToken(evt, tokenId),
-    };
-
-    container.on('pointermove', listeners.move);
-    container.on('pointerup', listeners.up);
-    container.on('pointerupoutside', listeners.up);
-    container.on('pointercancel', listeners.up);
-    if (pointerId !== null) {
-      event?.currentTarget?.capturePointer?.(pointerId);
-    }
-
-    container.zIndex = 100;
-    container.alpha = 1;
-    container.cursor = 'grabbing';
-
-    this.dragState = {
-      active: true,
-      tokenId,
-      pointerId,
-      container,
-      startCell: { xCell: metadata.xCell, yCell: metadata.yCell },
-      previewCell: { xCell: metadata.xCell, yCell: metadata.yCell },
-      lastSentCell: null,
-      lastSentAt: 0,
-      isOutOfBounds: false,
-      listeners,
-    };
-
-    this.showHoverCell(metadata.xCell, metadata.yCell, { outOfBounds: false });
-  }
-
-  continueDraggingToken(event, tokenId) {
-    if (!this.dragState.active || this.dragState.tokenId !== tokenId) {
-      return;
-    }
-
-    if (this.dragState.pointerId !== null && event?.pointerId !== undefined && event.pointerId !== this.dragState.pointerId) {
-      return;
-    }
-
-    const localPoint = this.container.toLocal(event.global);
-    const rawCell = cellFromWorld(localPoint, this.gridSize);
-    const clamped = clampCell(rawCell, this.sceneBounds);
-
-    this.dragState.previewCell = { xCell: clamped.xCell, yCell: clamped.yCell };
-    this.dragState.isOutOfBounds = clamped.outOfBounds;
-    this.showHoverCell(clamped.xCell, clamped.yCell, { outOfBounds: clamped.outOfBounds });
-
-    if (clamped.outOfBounds) {
-      return;
-    }
-
-    const x = cellToCanvas(clamped.xCell, this.gridSize);
-    const y = cellToCanvas(clamped.yCell, this.gridSize);
-    this.dragState.container.position.set(x, y);
-
-    const lastSentCell = this.dragState.lastSentCell;
-    const now = performance.now();
-    if (!lastSentCell || lastSentCell.xCell !== clamped.xCell || lastSentCell.yCell !== clamped.yCell) {
-      if (now - this.dragState.lastSentAt >= this.moveOptions.throttleMs) {
-        this.emitMoveRequest({ tokenId, xCell: clamped.xCell, yCell: clamped.yCell });
-        this.dragState.lastSentCell = { xCell: clamped.xCell, yCell: clamped.yCell };
-        this.dragState.lastSentAt = now;
-      }
-    }
-  }
-
-  finishDraggingToken(event, tokenId) {
-    if (!this.dragState.active || this.dragState.tokenId !== tokenId) {
-      return;
-    }
-
-    if (this.dragState.pointerId !== null && event?.pointerId !== undefined && event.pointerId !== this.dragState.pointerId) {
-      return;
-    }
-
-    const { container, listeners } = this.dragState;
-    container.off('pointermove', listeners.move);
-    container.off('pointerup', listeners.up);
-    container.off('pointerupoutside', listeners.up);
-    container.off('pointercancel', listeners.up);
-    if (this.dragState.pointerId !== null) {
-      container.releasePointerCapture?.(this.dragState.pointerId);
-    }
-
-    const metadata = this.tokenMetadata.get(tokenId);
-    const canMove = metadata && this.moveOptions.canMoveToken(metadata);
-    container.cursor = canMove ? 'grab' : 'not-allowed';
-    container.zIndex = 1;
-
-    const previewCell = this.dragState.previewCell;
-    const wasOutOfBounds = this.dragState.isOutOfBounds;
-    const lastSentCell = this.dragState.lastSentCell;
-    const lastSentAt = this.dragState.lastSentAt;
-
-    this.hideHoverCell();
-
-    if (wasOutOfBounds || !previewCell) {
-      this.restoreTokenPosition(tokenId);
-      this.dragState = this.createEmptyDragState();
-      return;
-    }
-
-    const now = performance.now();
-    const needsFinalEmit =
-      !lastSentCell ||
-      lastSentCell.xCell !== previewCell.xCell ||
-      lastSentCell.yCell !== previewCell.yCell ||
-      now - lastSentAt > this.moveOptions.throttleMs;
-
-    if (needsFinalEmit) {
-      this.emitMoveRequest({ tokenId, xCell: previewCell.xCell, yCell: previewCell.yCell });
-    }
-
-    this.dragState = this.createEmptyDragState();
-  }
-
-  showHoverCell(xCell, yCell, { outOfBounds = false } = {}) {
-    const size = this.gridSize;
-    const x = cellToCanvas(xCell ?? 0, size);
-    const y = cellToCanvas(yCell ?? 0, size);
-    const strokeColor = outOfBounds ? HOVER_OUT_COLOR : HOVER_IN_COLOR;
-    const fillColor = strokeColor;
-    const fillAlpha = outOfBounds ? HOVER_OUT_FILL_ALPHA : HOVER_IN_FILL_ALPHA;
-
-    this.hoverCell.clear();
-    this.hoverCell.lineStyle({ width: Math.max(2, size * 0.08), color: strokeColor, alpha: 0.95, alignment: 0.5 });
-    this.hoverCell.beginFill(fillColor, fillAlpha);
-    this.hoverCell.drawRect(x, y, size, size);
-    this.hoverCell.endFill();
-    this.hoverCell.visible = true;
-  }
-
-  hideHoverCell() {
-    this.hoverCell.visible = false;
-    this.hoverCell.clear();
-  }
-
-  restoreTokenPosition(tokenId) {
-    const metadata = this.tokenMetadata.get(tokenId);
-    if (!metadata) {
-      return;
-    }
-    this.syncTokenPosition(tokenId);
-  }
-
-  emitMoveRequest({ tokenId, xCell, yCell }) {
-    if (!this.moveOptions.onMoveRequest) {
-      return;
-    }
-    const metadata = this.tokenMetadata.get(tokenId);
-    if (!metadata) {
-      return;
-    }
-    if (metadata.xCell === xCell && metadata.yCell === yCell) {
-      return;
-    }
-    const version = Number.isInteger(metadata.version) ? metadata.version : 0;
-    this.moveOptions.onMoveRequest({ tokenId, xCell, yCell, version });
+    sprite.eventMode = 'static';
+    sprite.cursor = 'grab';
+    sprite.anchor.set(0.5);
+    sprite.width = gridSize;
+    sprite.height = gridSize;
+    return sprite;
   }
 }

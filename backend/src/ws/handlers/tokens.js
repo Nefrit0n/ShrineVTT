@@ -111,13 +111,14 @@ export default function registerTokenHandlers(namespace, { logger = log } = {}) 
         } else if (commandConfig.command === 'token.move') {
           logger.info(
             {
+              rid,
+              userId: actorUserId,
+              role: actorRole,
+              sessionId,
               tokenId: result?.tokenId ?? payload?.tokenId ?? null,
-              sceneId: result?.sceneId ?? null,
               xCell: result?.xCell ?? payload?.xCell ?? null,
               yCell: result?.yCell ?? payload?.yCell ?? null,
-              sessionId,
-              actorRole,
-              username: socket.data?.username ?? null,
+              sceneId: result?.sceneId ?? null,
             },
             'Token moved via WS',
           );
@@ -132,6 +133,8 @@ export default function registerTokenHandlers(namespace, { logger = log } = {}) 
             sceneId: payload?.sceneId ?? null,
             tokenId: payload?.tokenId ?? null,
             actorRole,
+            userId: actorUserId,
+            rid,
             username: socket.data?.username ?? null,
           },
           commandConfig.command === 'token.move' ? 'Failed to move token' : 'Failed to create token',

@@ -36,48 +36,65 @@ export function cellCenterToCanvas(cell, gridSize) {
   return (cell + 0.5) * size;
 }
 
-export function cellFromWorld(point, gridSize) {
+export function cellFromWorld(x, y, gridSize) {
   const size = normalizeGridSize(gridSize, 1);
-  const x = Number.isFinite(point?.x) ? point.x : 0;
-  const y = Number.isFinite(point?.y) ? point.y : 0;
-  const xCell = Math.floor(x / size);
-  const yCell = Math.floor(y / size);
+  const safeX = Number.isFinite(x) ? x : 0;
+  const safeY = Number.isFinite(y) ? y : 0;
+  const xCell = Math.floor(safeX / size);
+  const yCell = Math.floor(safeY / size);
   return { xCell, yCell };
 }
 
-export function clampCell(cell, { columns, rows } = {}) {
+export function gridColsRows(scene = {}) {
+  const gridSize = normalizeGridSize(scene.gridSize ?? scene.grid ?? scene.cellSize ?? 0, 0);
+  if (!gridSize) {
+    return { cols: 0, rows: 0 };
+  }
+
+  const widthPx = Number.isFinite(scene.widthPx) ? scene.widthPx : ensurePositiveNumber(scene.width, 0);
+  const heightPx = Number.isFinite(scene.heightPx) ? scene.heightPx : ensurePositiveNumber(scene.height, 0);
+
+  const cols = Math.max(0, Math.floor(widthPx / gridSize));
+  const rows = Math.max(0, Math.floor(heightPx / gridSize));
+
+  return { cols, rows };
+}
+
+export function clampCell(cell, scene = {}) {
+  const { cols, rows } = gridColsRows(scene);
   const normalized = {
     xCell: Math.floor(cell?.xCell ?? cell?.x ?? 0),
     yCell: Math.floor(cell?.yCell ?? cell?.y ?? 0),
   };
 
   let { xCell, yCell } = normalized;
-  let outOfBounds = false;
 
   if (xCell < 0) {
     xCell = 0;
-    outOfBounds = true;
   }
 
   if (yCell < 0) {
     yCell = 0;
-    outOfBounds = true;
   }
 
-  const hasColumns = Number.isInteger(columns) && columns > 0;
-  const hasRows = Number.isInteger(rows) && rows > 0;
-
-  if (hasColumns && xCell >= columns) {
-    xCell = columns - 1;
-    outOfBounds = true;
+  if (cols > 0 && xCell >= cols) {
+    xCell = cols - 1;
   }
 
-  if (hasRows && yCell >= rows) {
+  if (rows > 0 && yCell >= rows) {
     yCell = rows - 1;
-    outOfBounds = true;
   }
 
-  return { xCell, yCell, outOfBounds };
+  return { xCell, yCell };
+}
+
+export function worldFromCell(cell, gridSize) {
+  const size = normalizeGridSize(gridSize, 1);
+  const xCell = Number.isFinite(cell?.xCell) ? cell.xCell : Number.isFinite(cell?.x) ? cell.x : 0;
+  const yCell = Number.isFinite(cell?.yCell) ? cell.yCell : Number.isFinite(cell?.y) ? cell.y : 0;
+  const x = xCell * size + size / 2;
+  const y = yCell * size + size / 2;
+  return { x, y };
 }
 
 export function sceneToViewScale({ sceneWidth, sceneHeight, viewWidth, viewHeight }) {

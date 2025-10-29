@@ -197,6 +197,7 @@ async function ensurePixiStage() {
         stage.setTokenMoveHandler({
           canMoveToken: canCurrentUserMoveToken,
           requestMove: handleStageTokenMoveRequest,
+          userContext: { isGM: currentRole === 'MASTER', userId: currentUserId },
         });
         hideBoardLoadingOverlay();
         return stage;
@@ -246,6 +247,7 @@ async function updateStageMovePermissions() {
   stage.setTokenMoveHandler({
     canMoveToken: canCurrentUserMoveToken,
     requestMove: handleStageTokenMoveRequest,
+    userContext: { isGM: currentRole === 'MASTER', userId: currentUserId },
   });
 }
 
