@@ -1,84 +1,80 @@
-import * as ScrollArea from "@radix-ui/react-scroll-area";
+import { useMemo, useState } from "react";
+import {
+  IconArchive,
+  IconBackpack,
+  IconCards,
+  IconDice5,
+  IconLayoutKanban,
+  IconMessageCircle,
+  IconMusic,
+  IconNotebook,
+  IconSettings,
+  IconShield,
+  IconUsers
+} from "@tabler/icons-react";
 
 const SIDEBAR_SECTIONS = [
-  {
-    title: "Chat",
-    description:
-      "Chat messages, whispers, item uses, and rolls appear here. Choose who sees the results by switching between Public Roll, Private GM Roll, Blind GM Roll, or Self-Roll."
-  },
-  {
-    title: "Combat",
-    description: "Launch encounters, track initiative, and manage turn order without leaving the canvas."
-  },
-  {
-    title: "Scenes",
-    description: "Store theater of the mind setups and tactical battle maps so you can swap between them instantly."
-  },
-  {
-    title: "Actors",
-    description: "Keep player characters, creatures, and NPCs organized here for quick access to their sheets."
-  },
-  {
-    title: "Items",
-    description: "Items, spells, character abilities, and more live here—ready for you to drag onto character sheets or the scene."
-  },
-  {
-    title: "Journal Entries",
-    description: "Plan adventures, track progress, and capture notes. Pin important pages into the scene as Notes for easy reference."
-  },
-  {
-    title: "Roll Tables",
-    description: "Build random tables to roll for treasure, encounters, inspiration, or any other surprise you want to spring."
-  },
-  {
-    title: "Cards",
-    description: "Manage decks, stacks, and player hands so card-driven mechanics stay organized."
-  },
-  {
-    title: "Music",
-    description:
-      "Playlists and soundboards are curated here. Each player can independently adjust their own volume from this tab."
-  },
-  {
-    title: "Compendium Packs",
-    description:
-      "Long-term storage for everything in your World (except encounters). Use it as cold storage to help the World load faster."
-  },
-  {
-    title: "Settings",
-    description:
-      "Configure settings and controls, manage modules, edit World details, manage users, launch tours, generate support reports, explore documentation, get invitation links, log out, or return to setup. Some options are GM-only."
-  }
-];
+  { id: "chat", title: "Chat", icon: IconMessageCircle },
+  { id: "combat", title: "Combat", icon: IconShield },
+  { id: "scenes", title: "Scenes", icon: IconLayoutKanban },
+  { id: "actors", title: "Actors", icon: IconUsers },
+  { id: "items", title: "Items", icon: IconBackpack },
+  { id: "journals", title: "Journal Entries", icon: IconNotebook },
+  { id: "tables", title: "Roll Tables", icon: IconDice5 },
+  { id: "cards", title: "Cards", icon: IconCards },
+  { id: "music", title: "Music", icon: IconMusic },
+  { id: "compendium", title: "Compendium Packs", icon: IconArchive },
+  { id: "settings", title: "Settings", icon: IconSettings }
+] as const;
 
 export default function Sidebar() {
+  const [activeTab, setActiveTab] = useState<typeof SIDEBAR_SECTIONS[number]["id"]>(
+    SIDEBAR_SECTIONS[0].id
+  );
+
+  const activeSection = useMemo(
+    () => SIDEBAR_SECTIONS.find((section) => section.id === activeTab) ?? SIDEBAR_SECTIONS[0],
+    [activeTab]
+  );
+  const ActiveIcon = activeSection.icon;
+
   return (
     <aside className="panel floating-sidebar" aria-label="World sidebar">
-      <header>
-        <span className="tag">World Data</span>
-        <h2>The Sidebar</h2>
-        <p>
-          Access every dataset that powers your World—from chat history to compendium packs—without closing the action on the
-          canvas.
-        </p>
-      </header>
+      <nav className="sidebar-tabs" role="tablist" aria-label="World navigation">
+        {SIDEBAR_SECTIONS.map((section) => {
+          const Icon = section.icon;
+          const isActive = section.id === activeTab;
 
-      <ScrollArea.Root className="scroll-area" type="auto">
-        <ScrollArea.Viewport className="scroll-area scroll-area__viewport">
-          <div className="sidebar-section" role="list">
-            {SIDEBAR_SECTIONS.map((section) => (
-              <article className="sidebar-card" key={section.title} role="listitem">
-                <h3>{section.title}</h3>
-                <p>{section.description}</p>
-              </article>
-            ))}
-          </div>
-        </ScrollArea.Viewport>
-        <ScrollArea.Scrollbar className="scrollbar" orientation="vertical">
-          <ScrollArea.Thumb className="scrollbar-thumb" />
-        </ScrollArea.Scrollbar>
-        <ScrollArea.Corner />
-      </ScrollArea.Root>
+          return (
+            <button
+              key={section.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              id={`sidebar-tab-${section.id}`}
+              aria-controls={`sidebar-tabpanel-${section.id}`}
+              className={`sidebar-tab ${isActive ? "sidebar-tab--active" : ""}`}
+              title={section.title}
+              onClick={() => setActiveTab(section.id)}
+            >
+              <Icon aria-hidden="true" stroke={1.6} />
+              <span className="scene-tools__sr-only">{section.title}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      <div
+        id={`sidebar-tabpanel-${activeSection.id}`}
+        role="tabpanel"
+        aria-labelledby={`sidebar-tab-${activeSection.id}`}
+        className="sidebar-focus"
+      >
+        <div className="sidebar-focus__icon" aria-hidden="true">
+          <ActiveIcon stroke={1.6} />
+        </div>
+        <h3>{activeSection.title}</h3>
+      </div>
     </aside>
   );
 }
