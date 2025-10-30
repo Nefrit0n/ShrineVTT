@@ -1,4 +1,10 @@
-import { useMemo, useState } from "react";
+import {
+  useCallback,
+  useMemo,
+  useState,
+  type FormEventHandler,
+  type ChangeEventHandler,
+} from "react";
 
 import type { ChatMessage } from "@/features/chat/types";
 
@@ -11,10 +17,12 @@ const ROLL_VISIBILITY_OPTIONS = [
 
 type ChatDockProps = {
   messages: ChatMessage[];
+  onSendMessage?: (text: string) => void;
 };
 
-export default function ChatDock({ messages }: ChatDockProps) {
+export default function ChatDock({ messages, onSendMessage }: ChatDockProps) {
   const [rollVisibility, setRollVisibility] = useState<string>(ROLL_VISIBILITY_OPTIONS[0]!.value);
+  const [messageDraft, setMessageDraft] = useState("");
 
   const renderedMessages = useMemo(
     () =>
@@ -51,6 +59,21 @@ export default function ChatDock({ messages }: ChatDockProps) {
     [messages]
   );
 
+  const handleSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
+    (event) => {
+      event.preventDefault();
+
+      const trimmedMessage = messageDraft.trim();
+      if (!trimmedMessage) {
+        return;
+      }
+
+      onSendMessage?.(trimmedMessage);
+      setMessageDraft("");
+    },
+    [messageDraft, onSendMessage]
+  );
+
   return (
     <section className="chat-dock" aria-label="Session chat">
       <header className="chat-dock__header">
@@ -76,7 +99,16 @@ export default function ChatDock({ messages }: ChatDockProps) {
       </div>
       <div className="chat-dock__messages">{renderedMessages}</div>
       <footer className="chat-dock__composer">
-        <input type="text" placeholder="Press Enter to send a message" aria-label="Message input" />
+        <form onSubmit={handleSubmit}>
+          <input
+            type="text"
+            placeholder="Press Enter to send a message"
+            aria-label="Message input"
+            value={messageDraft}
+            onChange={((event) => setMessageDraft(event.target.value)) satisfies ChangeEventHandler<HTMLInputElement>}
+            disabled={!onSendMessage}
+          />
+        </form>
       </footer>
     </section>
   );
