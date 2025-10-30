@@ -25,7 +25,7 @@ type SidebarRightProps = {
 
 export default function SidebarRight({ referenceSections, quickNotes, sessionLog }: SidebarRightProps) {
   return (
-    <aside className={clsx("panel", "sidebar")} aria-label="Game sidebar">
+    <aside className={clsx("panel", "floating-sidebar")} aria-label="Game sidebar">
       <div className="sidebar-section">
         <header>
           <h2>Reference</h2>
