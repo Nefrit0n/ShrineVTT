@@ -36,31 +36,37 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
               onClick={() => setActiveTab(id)}
             >
               <Icon aria-hidden="true" stroke={1.6} />
-              <span className="sr-only">{title}</span>
+              <span className="world-sidebar__tab-label">{title}</span>
             </button>
           );
         })}
       </nav>
 
       <Panel
-        padding="lg"
+        padding="md"
         className="world-sidebar__content"
         aria-labelledby={activeSection ? `world-sidebar-tab-${activeSection.id}` : undefined}
         role="tabpanel"
         id={activeSection ? `world-sidebar-tabpanel-${activeSection.id}` : undefined}
       >
-        {ActiveIcon && (
-          <div className="world-sidebar__content-icon" aria-hidden="true">
-            <ActiveIcon stroke={1.6} />
-          </div>
-        )}
         {activeSection && (
-          <header>
-            <h3>{activeSection.title}</h3>
-            {activeSection.description && <p>{activeSection.description}</p>}
+          <header className="world-sidebar__content-header">
+            {ActiveIcon && (
+              <div className="world-sidebar__content-icon" aria-hidden="true">
+                <ActiveIcon stroke={1.6} />
+              </div>
+            )}
+            <div className="world-sidebar__content-heading">
+              <h3>{activeSection.title}</h3>
+              {activeSection.description && <p>{activeSection.description}</p>}
+            </div>
           </header>
         )}
-        {activeSection?.content}
+        <div className="world-sidebar__content-body">
+          {activeSection?.content ?? (
+            <p className="sidebar-placeholder">Select a tab to view its tools.</p>
+          )}
+        </div>
       </Panel>
     </aside>
   );
