@@ -20,11 +20,29 @@ export default function ChatDock({ messages, onSendMessage }: ChatDockProps) {
     () =>
       messages.map((message) => (
         <article key={message.id} className="chat-message">
-          <header>
+          <header className="chat-message__header">
             <strong>{message.author}</strong>
             <time dateTime={message.timestamp}>{message.timestamp}</time>
           </header>
-          <p>{message.text}</p>
+
+          <p
+            className="chat-message__text"
+            dangerouslySetInnerHTML={{ __html: message.text }}
+          />
+
+          {message.image && (
+            <img
+              src={message.image}
+              alt=""
+              style={{
+                marginTop: "6px",
+                maxWidth: "100%",
+                borderRadius: "8px",
+                boxShadow: "0 0 6px rgba(0,0,0,0.4)",
+                objectFit: "cover",
+              }}
+            />
+          )}
         </article>
       )),
     [messages]
@@ -35,9 +53,7 @@ export default function ChatDock({ messages, onSendMessage }: ChatDockProps) {
       event.preventDefault();
 
       const trimmedMessage = messageDraft.trim();
-      if (!trimmedMessage) {
-        return;
-      }
+      if (!trimmedMessage) return;
 
       onSendMessage?.(trimmedMessage);
       setMessageDraft("");
@@ -59,7 +75,8 @@ export default function ChatDock({ messages, onSendMessage }: ChatDockProps) {
             placeholder="Press Enter to send a message"
             aria-label="Message input"
             value={messageDraft}
-            onChange={((event) => setMessageDraft(event.target.value)) satisfies ChangeEventHandler<HTMLInputElement>}
+            onChange={((event) =>
+              setMessageDraft(event.target.value)) satisfies ChangeEventHandler<HTMLInputElement>}
             disabled={!onSendMessage}
           />
         </form>

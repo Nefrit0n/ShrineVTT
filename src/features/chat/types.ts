@@ -1,7 +1,8 @@
 export type ChatMessage = {
   id: string;
   author: string;
+  text: string;
   timestamp: string;
   type: "text";
-  text: string;
+  image?: string;
 };
