@@ -1,32 +1,73 @@
-import type { ElementType } from "react";
+import * as ScrollArea from "@radix-ui/react-scroll-area";
+import { IconWriting } from "@tabler/icons-react";
 import clsx from "clsx";
 
-type Tool = {
-  id: string;
-  label: string;
-  icon: ElementType;
-  active?: boolean;
+type ReferenceSection = {
+  title: string;
+  items: string[];
+};
+
+type QuickNote = {
+  heading: string;
+  body: string;
+};
+
+type SessionLog = {
+  lastUpdated: string;
+  description: string;
 };
 
 type SidebarProps = {
-  tools: Tool[];
+  referenceSections: ReferenceSection[];
+  quickNotes: QuickNote[];
+  sessionLog: SessionLog;
 };
 
-export default function Sidebar({ tools }: SidebarProps) {
+export default function Sidebar({ referenceSections, quickNotes, sessionLog }: SidebarProps) {
   return (
-    <nav className={clsx("panel", "scene-tools")} aria-label="Scene tools">
-      {tools.map(({ id, icon: Icon, label, active }) => (
-        <button
-          key={id}
-          className={clsx("scene-tool-button", { active })}
-          type="button"
-          aria-pressed={Boolean(active)}
-          title={label}
-        >
-          <Icon size={26} stroke={1.7} />
-          <span className="sr-only">{label}</span>
-        </button>
-      ))}
-    </nav>
+    <aside className={clsx("panel", "floating-sidebar")} aria-label="Правая панель стола">
+      <div className="sidebar-section">
+        <header>
+          <h2>Справка</h2>
+        </header>
+        <ScrollArea.Root className={clsx("scroll-area")} type="auto">
+          <ScrollArea.Viewport style={{ height: "100%" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px", paddingRight: 8 }}>
+              {referenceSections.map(({ title, items }) => (
+                <section key={title} className="sidebar-card">
+                  <h3>{title}</h3>
+                  <ul>
+                    {items.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+              {quickNotes.map(({ heading, body }) => (
+                <section key={heading} className="sidebar-card">
+                  <h3>{heading}</h3>
+                  <p>{body}</p>
+                </section>
+              ))}
+            </div>
+          </ScrollArea.Viewport>
+          <ScrollArea.Scrollbar orientation="vertical" style={{ width: 8 }}>
+            <ScrollArea.Thumb className="scrollbar-thumb" />
+          </ScrollArea.Scrollbar>
+        </ScrollArea.Root>
+      </div>
+      <div className="sidebar-section">
+        <header>
+          <h2>Журнал сессии</h2>
+        </header>
+        <div className="sidebar-card" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="tag">
+            <IconWriting size={16} />
+            {sessionLog.lastUpdated}
+          </div>
+          <p>{sessionLog.description}</p>
+        </div>
+      </div>
+    </aside>
   );
 }
