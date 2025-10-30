@@ -49,6 +49,28 @@ export default function MainLayout() {
     setChatMessages((prev) => [...prev, message]);
   }, []);
 
+  const handleSendChatMessage = useCallback(
+    (text: string) => {
+      const now = new Date();
+      const timestamp = now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      addChatMessage({
+        id:
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}`,
+        author: "You",
+        text,
+        timestamp,
+        type: "text",
+      });
+    },
+    [addChatMessage]
+  );
+
   const sidebarSections = useMemo<WorldSidebarSection[]>(
     () => [
       {
@@ -57,7 +79,7 @@ export default function MainLayout() {
         icon: IconMessageCircle,
         description:
           "Chat messages, whispers, item/feature uses, and rolls will appear here. You and your players can configure who can see their rolls by changing the dropdown to Public Roll, Private GM Roll, Blind GM Roll, or Self-Roll. Gamemaster users will be able to see every roll except self rolls.",
-        content: <ChatDock messages={chatMessages} />
+        content: <ChatDock messages={chatMessages} onSendMessage={handleSendChatMessage} />
       },
       {
         id: "combat",
