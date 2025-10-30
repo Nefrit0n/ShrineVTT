@@ -54,9 +54,10 @@ export default function Sidebar() {
               id={`sidebar-tab-${section.id}`}
               aria-controls={`sidebar-tabpanel-${section.id}`}
               className={`sidebar-tab ${isActive ? "sidebar-tab--active" : ""}`}
+              title={section.title}
               onClick={() => setActiveTab(section.id)}
             >
-              <Icon aria-hidden="true" />
+              <Icon aria-hidden="true" stroke={1.6} />
               <span className="scene-tools__sr-only">{section.title}</span>
             </button>
           );
@@ -70,7 +71,7 @@ export default function Sidebar() {
         className="sidebar-focus"
       >
         <div className="sidebar-focus__icon" aria-hidden="true">
-          <ActiveIcon />
+          <ActiveIcon stroke={1.6} />
         </div>
         <h3>{activeSection.title}</h3>
       </div>
