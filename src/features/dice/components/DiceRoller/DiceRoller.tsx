@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { IconCircleDot, IconHexagon, IconOctahedron, IconPentagon, IconX } from "@tabler/icons-react";
+import {
+  IconCircleDot,
+  IconHexagon,
+  IconOctahedron,
+  IconPentagon,
+  IconX,
+} from "@tabler/icons-react";
 
 import type { AddChatMessage } from "@/features/chat/types";
 import { rollDice, type RollTerm } from "@/shared/utils/dice";
@@ -114,6 +120,15 @@ export default function DiceRoller({ onRollComplete }: DiceRollerProps) {
     setIsOpen(false);
   };
 
+  const selectionSummary = useMemo(() => {
+    const parts = DICE_OPTIONS.filter((option) => (selection[option.id] ?? 0) > 0).map((option) => {
+      const count = selection[option.id] ?? 0;
+      return `${count}${option.label}`;
+    });
+
+    return parts.join(" + ");
+  }, [selection]);
+
   return (
     <div className="dice-roller" aria-live="polite">
       {toast && (
@@ -127,47 +142,68 @@ export default function DiceRoller({ onRollComplete }: DiceRollerProps) {
         </div>
       )}
 
-      <div className={isOpen ? "dice-roller__menu dice-roller__menu--open" : "dice-roller__menu"}>
+      <div className="dice-roller__dock">
         <button
           type="button"
           className="dice-roller__toggle"
           aria-label={isOpen ? "Закрыть меню бросков" : "Открыть меню бросков"}
+          aria-expanded={isOpen}
           onClick={() => setIsOpen((prev) => !prev)}
         >
           <IconCircleDot aria-hidden="true" stroke={1.8} />
         </button>
 
-        <div className="dice-roller__options" aria-hidden={!isOpen}>
+        <div className={isOpen ? "dice-roller__panel dice-roller__panel--open" : "dice-roller__panel"}>
+          <header className="dice-roller__panel-header">
+            <span className="dice-roller__panel-title">Броски</span>
+            <button
+              type="button"
+              className="dice-roller__reset"
+              onClick={resetSelection}
+              disabled={!totalDice}
+              aria-label="Очистить выбранные кости"
+            >
+              <IconX aria-hidden="true" stroke={1.6} />
+            </button>
+          </header>
+
+          <div className="dice-roller__grid">
+            {DICE_OPTIONS.map((option) => {
+              const Icon = option.icon;
+              const count = selection[option.id] ?? 0;
+
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={
+                    count > 0
+                      ? "dice-roller__option dice-roller__option--active"
+                      : "dice-roller__option"
+                  }
+                  title={option.hint}
+                  onClick={() => incrementDie(option.id)}
+                >
+                  <span className="dice-roller__option-icon" aria-hidden="true">
+                    <Icon stroke={1.5} />
+                  </span>
+                  <span className="dice-roller__option-label">{option.label}</span>
+                  {count > 0 && <span className="dice-roller__counter">×{count}</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="dice-roller__summary" role="status">
+            {selectionSummary ? selectionSummary : "Выберите кости"}
+          </div>
+
           <button
             type="button"
-            className="dice-roller__close"
-            onClick={() => {
-              resetSelection();
-              setIsOpen(false);
-            }}
-            aria-label="Очистить выбор"
+            className="dice-roller__roll"
+            onClick={handleRoll}
+            disabled={!totalDice}
           >
-            <IconX aria-hidden="true" stroke={1.8} />
-          </button>
-          {DICE_OPTIONS.map((option, index) => {
-            const Icon = option.icon;
-            const count = selection[option.id] ?? 0;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                className="dice-roller__option"
-                title={option.hint}
-                onClick={() => incrementDie(option.id)}
-                style={getOptionStyle(index, DICE_OPTIONS.length)}
-              >
-                <Icon aria-hidden="true" stroke={1.6} />
-                <span>{option.label}</span>
-                {count > 0 && <span className="dice-roller__counter">{count}</span>}
-              </button>
-            );
-          })}
-          <button type="button" className="dice-roller__roll" onClick={handleRoll} disabled={!totalDice}>
             Бросить
           </button>
         </div>
@@ -222,15 +258,4 @@ function formatRollDetail(terms: RollTerm[]): string {
     })
     .filter(Boolean)
     .join("; ");
-}
-
-function getOptionStyle(index: number, total: number) {
-  const angle = (index / total) * Math.PI * 2 - Math.PI / 2;
-  const radius = 72;
-  const x = Math.cos(angle) * radius;
-  const y = Math.sin(angle) * radius;
-
-  return {
-    transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`
-  } as const;
 }
