@@ -15,8 +15,6 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
     [activeTab, sections]
   );
 
-  const ActiveIcon = activeSection?.icon;
-
   return (
     <aside className="world-sidebar" aria-label="World sidebar">
       <nav className="world-sidebar__tabs" role="tablist" aria-label="World navigation">
@@ -43,24 +41,25 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
       </nav>
 
       <Panel
-        padding="lg"
+        padding="sm"
         className="world-sidebar__content"
         aria-labelledby={activeSection ? `world-sidebar-tab-${activeSection.id}` : undefined}
         role="tabpanel"
         id={activeSection ? `world-sidebar-tabpanel-${activeSection.id}` : undefined}
       >
-        {ActiveIcon && (
-          <div className="world-sidebar__content-icon" aria-hidden="true">
-            <ActiveIcon stroke={1.6} />
-          </div>
-        )}
         {activeSection && (
-          <header>
-            <h3>{activeSection.title}</h3>
-            {activeSection.description && <p>{activeSection.description}</p>}
+          <header className="world-sidebar__content-header">
+            <div className="world-sidebar__content-heading">
+              <h3>{activeSection.title}</h3>
+              {activeSection.description && <p>{activeSection.description}</p>}
+            </div>
           </header>
         )}
-        {activeSection?.content}
+        <div className="world-sidebar__content-body">
+          {activeSection?.content ?? (
+            <p className="sidebar-placeholder">Select a tab to view its tools.</p>
+          )}
+        </div>
       </Panel>
     </aside>
   );
