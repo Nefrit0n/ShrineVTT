@@ -26,7 +26,12 @@ export type OperatorTerm = {
   operator: "+" | "-" | "*" | "/";
 };
 
-export type RollTerm = DiceRollTerm | NumberTerm | OperatorTerm;
+export type UnaryTerm = {
+  type: "unary";
+  operator: "+" | "-";
+};
+
+export type RollTerm = DiceRollTerm | NumberTerm | OperatorTerm | UnaryTerm;
 
 export interface RollResult {
   /** The numeric result of the roll after applying all operations. */
@@ -124,7 +129,7 @@ class DiceParser {
 
   parseFactor(): EvalResult {
     this.skipWhitespace();
-    const sign = this.parseUnarySign();
+    const { sign, unaryTerms } = this.parseUnaryPrefix();
     this.skipWhitespace();
     let result: EvalResult;
 
@@ -150,24 +155,8 @@ class DiceParser {
       throw new Error(`Unexpected token at position ${this.index + 1}`);
     }
 
-    if (sign === -1) {
-      result = {
-        value: -result.value,
-        terms: [{ type: "number", value: -1 }, { type: "operator", operator: "*" }, ...result.terms],
-      };
-    }
-
-    return result;
-  }
-
-  parseUnarySign(): 1 | -1 {
-    const char = this.peek();
-    if (char === "+" || char === "-") {
-      this.index += 1;
-      const sign = char === "+" ? 1 : -1;
-      return sign;
-    }
-    return 1;
+    const signedValue = sign === -1 ? -result.value : result.value;
+    return { value: signedValue, terms: [...unaryTerms, ...result.terms] };
   }
 
   parseNumber(): EvalResult {
@@ -186,12 +175,14 @@ class DiceParser {
   parseDiceTerm(): EvalResult {
     const start = this.index;
     const count = this.parseOptionalInteger();
+    this.skipWhitespace();
 
     const diePrefix = this.peek();
     if (!diePrefix || diePrefix.toLowerCase() !== "d") {
       throw new Error(`Expected 'd' at position ${this.index + 1}`);
     }
     this.index += 1;
+    this.skipWhitespace();
     const facesChar = this.peek();
     if (!facesChar) {
       throw new Error(`Expected die faces after 'd' at position ${this.index + 1}`);
@@ -213,7 +204,7 @@ class DiceParser {
     }
 
     const modifier = this.parseModifier();
-    const notation = this.source.slice(start, this.index);
+    const notation = this.source.slice(start, this.index).replace(/\s+/g, "");
 
     const rollCount = count ?? 1;
     if (rollCount <= 0) {
@@ -260,30 +251,35 @@ class DiceParser {
   }
 
   parseModifier(): DiceRollModifier | undefined {
-    const lookahead = this.source.slice(this.index, this.index + 2).toLowerCase();
-    if (!lookahead.startsWith("k") && !lookahead.startsWith("d")) {
+    const start = this.index;
+    this.skipWhitespace();
+    const typeChar = this.peek()?.toLowerCase();
+    if (typeChar !== "k" && typeChar !== "d") {
+      this.index = start;
       return undefined;
     }
-
-    const firstChar = lookahead[0];
-    const secondChar = lookahead[1];
-    if (secondChar !== "h" && secondChar !== "l") {
+    this.index += 1;
+    this.skipWhitespace();
+    const targetChar = this.peek()?.toLowerCase();
+    if (targetChar !== "h" && targetChar !== "l") {
+      this.index = start;
       return undefined;
     }
-    this.index += 2;
+    this.index += 1;
+    this.skipWhitespace();
     const count = this.parseInteger();
 
     if (count <= 0) {
       throw new Error("Modifier count must be greater than zero");
     }
 
-    if (firstChar === "k" && secondChar === "h") {
+    if (typeChar === "k" && targetChar === "h") {
       return { type: "keep-high", count };
     }
-    if (firstChar === "k" && secondChar === "l") {
+    if (typeChar === "k" && targetChar === "l") {
       return { type: "keep-low", count };
     }
-    if (firstChar === "d" && secondChar === "h") {
+    if (typeChar === "d" && targetChar === "h") {
       return { type: "drop-high", count };
     }
     return { type: "drop-low", count };
@@ -342,7 +338,7 @@ class DiceParser {
   }
 
   skipWhitespace() {
-    while (this.peek() === " " || this.peek() === "\n" || this.peek() === "\t") {
+    while (/\s/.test(this.peek() ?? "")) {
       this.index += 1;
     }
   }
@@ -360,11 +356,42 @@ class DiceParser {
   }
 
   getNormalizedNotation(): string {
-    return this.source.replace(/\s+/g, " ").trim();
+    const trimmed = this.source.trim();
+    if (!trimmed) {
+      return "";
+    }
+    const collapsedSpaces = trimmed.replace(/\s+/g, " ");
+    const operatorsTight = collapsedSpaces.replace(/\s*([+\-*/()])\s*/g, "$1");
+    const diceTight = operatorsTight
+      .replace(/(\d)\s*d/gi, "$1d")
+      .replace(/d\s*([%f\d])/gi, "d$1")
+      .replace(/(k|d)\s*([hl])/gi, "$1$2")
+      .replace(/(kh|kl|dh|dl)\s*(\d+)/gi, "$1$2");
+    return diceTight.trim();
   }
 
   private looksLikeDice(): boolean {
     const remainder = this.source.slice(this.index);
-    return /^\d*d/i.test(remainder);
+    return /^\d*\s*d/i.test(remainder);
+  }
+
+  private parseUnaryPrefix(): { sign: 1 | -1; unaryTerms: UnaryTerm[] } {
+    const unaryTerms: UnaryTerm[] = [];
+    let sign: 1 | -1 = 1;
+
+    for (;;) {
+      const char = this.peek();
+      if (char !== "+" && char !== "-") {
+        break;
+      }
+      this.index += 1;
+      unaryTerms.push({ type: "unary", operator: char });
+      if (char === "-") {
+        sign = sign === 1 ? -1 : 1;
+      }
+      this.skipWhitespace();
+    }
+
+    return { sign, unaryTerms };
   }
 }

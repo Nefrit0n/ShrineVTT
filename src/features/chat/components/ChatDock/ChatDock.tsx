@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
+import type { ChatMessage } from "@/features/chat/types";
 
 const ROLL_VISIBILITY_OPTIONS = [
   { value: "public", label: "Public Roll" },
@@ -7,24 +9,47 @@ const ROLL_VISIBILITY_OPTIONS = [
   { value: "self", label: "Self-Roll" }
 ];
 
-const INITIAL_MESSAGES = [
-  {
-    id: "1",
-    author: "Aeryn",
-    content: "Spotted a hidden passage beneath the altar.",
-    timestamp: "20:14"
-  },
-  {
-    id: "2",
-    author: "Kael",
-    content: "I'll send the familiar first—stand by.",
-    timestamp: "20:15"
-  }
-];
+type ChatDockProps = {
+  messages: ChatMessage[];
+};
 
-export default function ChatDock() {
-  const [messages] = useState(INITIAL_MESSAGES);
+export default function ChatDock({ messages }: ChatDockProps) {
   const [rollVisibility, setRollVisibility] = useState<string>(ROLL_VISIBILITY_OPTIONS[0]!.value);
+
+  const renderedMessages = useMemo(
+    () =>
+      messages.map((message) => {
+        if (message.type === "roll") {
+          return (
+            <article key={message.id} className="chat-message chat-message--roll">
+              <header>
+                <strong>{message.author}</strong>
+                <time dateTime={message.timestamp}>{message.timestamp}</time>
+              </header>
+              <div className="chat-message__roll">
+                <div className="chat-message__roll-title">{message.roll.title}</div>
+                <div className="chat-message__roll-body">
+                  <div className="chat-message__roll-expression">{message.roll.breakdown}</div>
+                  <div className="chat-message__roll-total">{message.roll.total}</div>
+                </div>
+                <footer className="chat-message__roll-detail">{message.roll.detail}</footer>
+              </div>
+            </article>
+          );
+        }
+
+        return (
+          <article key={message.id} className="chat-message">
+            <header>
+              <strong>{message.author}</strong>
+              <time dateTime={message.timestamp}>{message.timestamp}</time>
+            </header>
+            <p>{message.text}</p>
+          </article>
+        );
+      }),
+    [messages]
+  );
 
   return (
     <section className="chat-dock" aria-label="Session chat">
@@ -49,17 +74,7 @@ export default function ChatDock() {
           </select>
         </div>
       </div>
-      <div className="chat-dock__messages">
-        {messages.map((message) => (
-          <article key={message.id} className="chat-message">
-            <header>
-              <strong>{message.author}</strong>
-              <time dateTime={message.timestamp}>{message.timestamp}</time>
-            </header>
-            <p>{message.content}</p>
-          </article>
-        ))}
-      </div>
+      <div className="chat-dock__messages">{renderedMessages}</div>
       <footer className="chat-dock__composer">
         <input type="text" placeholder="Press Enter to send a message" aria-label="Message input" />
       </footer>
