@@ -10,8 +10,7 @@ import {
   IconMessageCircle,
   IconMusic,
   IconSettings,
-  IconSwords,
-  IconUsers
+  IconSwords
 } from "@tabler/icons-react";
 
 import { ChatDock } from "@/features/chat/components/ChatDock";
@@ -31,8 +30,20 @@ export default function MainLayout() {
         id: "chat",
         title: "Chat",
         icon: IconMessageCircle,
-        description: "Coordinate tactics, share roleplay beats, and keep everyone on the same page.",
+        description:
+          "Chat messages, whispers, item/feature uses, and rolls will appear here. You and your players can configure who can see their rolls by changing the dropdown to Public Roll, Private GM Roll, Blind GM Roll, or Self-Roll. Gamemaster users will be able to see every roll except self rolls.",
         content: <ChatDock />
+      },
+      {
+        id: "combat",
+        title: "Combat",
+        icon: IconSwords,
+        description: "Start and track Encounters here.",
+        content: (
+          <p className="sidebar-placeholder">
+            Queue turns, monitor initiative, and resolve combat effects in one focused view.
+          </p>
+        )
       },
       {
         id: "scenes",
@@ -42,18 +53,7 @@ export default function MainLayout() {
           "Scenes for theater of the mind moments and tactical battle maps are stored here.",
         content: (
           <p className="sidebar-placeholder">
-            Scene management tools will live here, providing quick access to your prepared worlds.
-          </p>
-        )
-      },
-      {
-        id: "combat",
-        title: "Combat",
-        icon: IconSwords,
-        description: "Start and track Encounters here.",
-        content: (
-          <p className="sidebar-placeholder">
-            Build turn orders, apply initiative modifiers, and keep the battle pacing sharp from this view.
+            Swap prepared battle maps or narrative scenes without interrupting the flow of the session.
           </p>
         )
       },
@@ -63,42 +63,30 @@ export default function MainLayout() {
         icon: IconMasksTheater,
         description:
           "Characters for your players, creatures, and NPCs are stored here.",
-        content: (
-          <p className="sidebar-placeholder">
-            Organise heroes, villains, and supporting cast members so they are always ready for the next scene.
-          </p>
-        )
+        content: <PlayersOnline players={MOCK_PLAYERS} />
       },
       {
         id: "items",
         title: "Items",
         icon: IconBackpack,
-        description:
-          "Items, spells, character abilities, and more are stored here.",
+        description: "Items, spells, character abilities, and more are stored here.",
         content: (
           <p className="sidebar-placeholder">
-            Prepare loot drops, treasure parcels, and magical upgrades without disrupting the session flow.
+            Drag equipment, treasure, and abilities into actor sheets or scenes when you need them.
           </p>
         )
       },
       {
         id: "journal",
-        title: "Journal",
+        title: "Journal Entries",
         icon: IconBook2,
         description:
           "Journal entries for planning your adventures, tracking progress, and any other note taking are stored here.",
         content: (
           <p className="sidebar-placeholder">
-            Reference lore, NPC dossiers, and session notes without leaving the table view.
+            Keep campaign prep, session notes, and player handouts organised for quick reference.
           </p>
         )
-      },
-      {
-        id: "players",
-        title: "Players",
-        icon: IconUsers,
-        description: "Track who is currently present in the session and review their characters.",
-        content: <PlayersOnline players={MOCK_PLAYERS} />
       },
       {
         id: "roll-tables",
@@ -108,7 +96,7 @@ export default function MainLayout() {
           "Roll tables, which are tables of options that can be rolled on for a random result, are stored here.",
         content: (
           <p className="sidebar-placeholder">
-            Quickly surface curated random encounters, treasure bundles, or story prompts at the table.
+            Fire off random encounters, treasure drops, and story prompts directly from curated tables.
           </p>
         )
       },
@@ -131,7 +119,7 @@ export default function MainLayout() {
           "Playlists and soundboards are stored here. Each player can also independently control their volume from this tab.",
         content: (
           <p className="sidebar-placeholder">
-            Blend ambience, sound effects, and dramatic cues while keeping per-player volume controls handy.
+            Layer ambient tracks, sound effects, and dramatic stingers with quick access to volume.
           </p>
         )
       },
@@ -140,10 +128,10 @@ export default function MainLayout() {
         title: "Compendium Packs",
         icon: IconArchive,
         description:
-          "Compendium Packs are long term storage for everything we just covered (except Encounters).",
+          "Compendium Packs are long term storage for everything we just covered (except Encounters). You can think of it as cold storage for your data which will make your World load more quickly.",
         content: (
           <p className="sidebar-placeholder">
-            Think of it as cold storage for your data which keeps your world loading fast while remaining searchable.
+            Archive modules, lore, and reusable content without slowing down your active world.
           </p>
         )
       },
@@ -152,10 +140,10 @@ export default function MainLayout() {
         title: "Settings",
         icon: IconSettings,
         description:
-          "Configure your settings, manage modules, adjust users, run tours, and access documentation or support tools.",
+          "This tab contains a number of useful tools that let you: configure your settings, controls, manage Modules, edit your World's details, manage the Users in your World, explore Foundry's features with Tours, generate a Support Report, check out the official documentation, the community Wiki, get your Invitation Links, log out, and Return to Setup. Some of these options are only available for Gamemasters.",
         content: (
           <p className="sidebar-placeholder">
-            This tab collects world configuration, module management, invitation links, and access to setup tools.
+            Quickly adjust world configuration, manage installed modules, and reach documentation or support.
           </p>
         )
       }
