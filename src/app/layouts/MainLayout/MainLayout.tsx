@@ -17,7 +17,6 @@ import { ChatDock } from "@/features/chat/components/ChatDock";
 import { PlayersOnline } from "@/features/players/components/PlayersOnline";
 import { SceneCanvas } from "@/features/scene/components/SceneCanvas";
 import { SceneTools } from "@/features/scene/components/SceneTools";
-import { DiceRoller } from "@/features/dice/components/DiceRoller";
 import {
   WorldSidebar,
   type WorldSidebarSection
@@ -49,6 +48,28 @@ export default function MainLayout() {
     setChatMessages((prev) => [...prev, message]);
   }, []);
 
+  const handleSendChatMessage = useCallback(
+    (text: string) => {
+      const now = new Date();
+      const timestamp = now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      addChatMessage({
+        id:
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}`,
+        author: "You",
+        text,
+        timestamp,
+        type: "text",
+      });
+    },
+    [addChatMessage]
+  );
+
   const sidebarSections = useMemo<WorldSidebarSection[]>(
     () => [
       {
@@ -56,8 +77,8 @@ export default function MainLayout() {
         title: "Chat",
         icon: IconMessageCircle,
         description:
-          "Chat messages, whispers, item/feature uses, and rolls will appear here. You and your players can configure who can see their rolls by changing the dropdown to Public Roll, Private GM Roll, Blind GM Roll, or Self-Roll. Gamemaster users will be able to see every roll except self rolls.",
-        content: <ChatDock messages={chatMessages} />
+          "Chat messages and whispers will appear here so you can keep track of the table talk at a glance.",
+        content: <ChatDock messages={chatMessages} onSendMessage={handleSendChatMessage} />
       },
       {
         id: "combat",
@@ -173,7 +194,7 @@ export default function MainLayout() {
         )
       }
     ],
-    []
+    [chatMessages, handleSendChatMessage]
   );
 
   return (
@@ -182,7 +203,6 @@ export default function MainLayout() {
 
       <div className="workspace-overlay">
         <SceneTools />
-        <DiceRoller onRollComplete={addChatMessage} />
         <WorldSidebar sections={sidebarSections} />
       </div>
     </div>

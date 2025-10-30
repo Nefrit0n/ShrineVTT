@@ -376,46 +376,6 @@ a {
   gap: 16px;
 }
 
-.chat-dock__controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(92, 122, 255, 0.24);
-  background: rgba(12, 18, 36, 0.6);
-}
-
-.chat-dock__controls label {
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: rgba(198, 208, 255, 0.74);
-}
-
-.chat-dock__visibility {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.chat-dock__visibility select {
-  appearance: none;
-  padding: 10px 28px 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(106, 136, 255, 0.34);
-  background: linear-gradient(150deg, rgba(18, 24, 44, 0.82), rgba(12, 18, 32, 0.78));
-  color: rgba(224, 232, 255, 0.88);
-  font-size: 0.82rem;
-  letter-spacing: 0.02em;
-}
-
-.chat-dock__visibility select:focus-visible {
-  outline: 2px solid rgba(160, 182, 255, 0.85);
-  outline-offset: 2px;
-}
-
 .chat-dock__header {
   display: flex;
   align-items: baseline;
@@ -477,54 +437,6 @@ a {
   font-size: 0.88rem;
   line-height: 1.5;
   color: rgba(206, 216, 255, 0.84);
-}
-
-.chat-message--roll {
-  background: radial-gradient(circle at 12% 12%, rgba(90, 110, 255, 0.18), transparent 55%),
-    linear-gradient(160deg, rgba(14, 20, 42, 0.82), rgba(10, 14, 28, 0.76));
-  border-color: rgba(122, 156, 255, 0.36);
-}
-
-.chat-message__roll {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.chat-message__roll-title {
-  font-size: 0.74rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: rgba(196, 208, 255, 0.8);
-}
-
-.chat-message__roll-body {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.chat-message__roll-expression {
-  font-size: 0.85rem;
-  font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", monospace;
-  color: rgba(224, 230, 255, 0.85);
-}
-
-.chat-message__roll-total {
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #ffffff;
-  text-shadow: 0 0 16px rgba(120, 140, 255, 0.55);
-}
-
-.chat-message__roll-detail {
-  font-size: 0.75rem;
-  color: rgba(196, 210, 255, 0.7);
-}
-
-.chat-message__roll-detail::first-letter {
-  text-transform: uppercase;
 }
 
 .chat-dock__composer {
