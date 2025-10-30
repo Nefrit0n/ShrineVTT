@@ -31,7 +31,7 @@ export default function Sidebar({ referenceSections, quickNotes, sessionLog }: S
           <h2>Справка</h2>
         </header>
         <ScrollArea.Root className={clsx("scroll-area")} type="auto">
-          <ScrollArea.Viewport style={{ height: "100%" }}>
+          <ScrollArea.Viewport className="scroll-area__viewport">
             <div style={{ display: "flex", flexDirection: "column", gap: "16px", paddingRight: 8 }}>
               {referenceSections.map(({ title, items }) => (
                 <section key={title} className="sidebar-card">

@@ -288,7 +288,7 @@ a {
   overflow: hidden;
 }
 
-.floating-sidebar .scroll-area[data-radix-scroll-area-viewport] {
+.floating-sidebar .scroll-area__viewport {
   height: 100%;
 }
 
