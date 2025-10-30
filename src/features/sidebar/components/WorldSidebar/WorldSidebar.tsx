@@ -34,7 +34,7 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
               onClick={() => setActiveTab(id)}
             >
               <Icon aria-hidden="true" stroke={1.6} />
-              <span className="sr-only">{title}</span>
+              <span className="world-sidebar__tab-label">{title}</span>
             </button>
           );
         })}
