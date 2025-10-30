@@ -1,39 +1,5 @@
-import { IconBrush, IconDownload, IconFlame, IconLayersIntersect, IconPrompt, IconRulerMeasure, IconSettings, IconSparkles, IconUsersGroup, IconWriting } from "@tabler/icons-react";
-import Sidebar from "../components/Sidebar";
 import CanvasArea from "../components/CanvasArea";
 import SidebarRight from "../components/SidebarRight";
-import PlayerList from "../components/PlayerList";
-
-const sceneTools = [
-  { id: "select", label: "Select", icon: IconPrompt, active: true },
-  { id: "measure", label: "Measure", icon: IconRulerMeasure },
-  { id: "draw", label: "Draw", icon: IconBrush },
-  { id: "actors", label: "Actors", icon: IconUsersGroup },
-  { id: "tiles", label: "Tiles", icon: IconLayersIntersect },
-  { id: "effects", label: "Effects", icon: IconSparkles },
-  { id: "lights", label: "Lights", icon: IconFlame },
-  { id: "config", label: "Config", icon: IconSettings }
-];
-
-const players = [
-  { name: "Aster", character: "Seren of the Veil", role: "GM", color: "#60a5fa" },
-  { name: "Mira", character: "Ilyra Dawnpetal", role: "Artificer", color: "#a855f7" },
-  { name: "Corin", character: "Thalos Emberborn", role: "Paladin", color: "#f97316" },
-  { name: "Jun", character: "Ashen Whisper", role: "Rogue", color: "#38bdf8" }
-];
-
-const macros = [
-  "Arcane Blast",
-  "Healing Word",
-  "Flame Strike",
-  "Shadowstep",
-  "Divine Shield",
-  "Summon Sprite",
-  "Chrono Shift",
-  "Lunar Arrow",
-  "Crystal Barrier",
-  "Guidance"
-];
 
 const referenceSections = [
   {
@@ -73,41 +39,11 @@ const sessionLog = {
 
 export default function MainLayout() {
   return (
-    <div className="app-shell">
-      <Sidebar tools={sceneTools} />
+    <div className="workspace">
       <CanvasArea />
-      <SidebarRight referenceSections={referenceSections} quickNotes={quickNotes} sessionLog={sessionLog} />
-      <footer className="panel macro-bar" aria-label="Macro bar">
-        {macros.map((macro) => (
-          <button key={macro} type="button" className="macro-slot">
-            {macro}
-          </button>
-        ))}
-      </footer>
-      <PlayerList players={players} />
-      <div className="tag" style={{ position: "absolute", top: 32, right: 32, gap: 8 }}>
-        <IconWriting size={16} />
-        Session Notes Synced
+      <div className="workspace-overlay">
+        <SidebarRight referenceSections={referenceSections} quickNotes={quickNotes} sessionLog={sessionLog} />
       </div>
-      <button
-        type="button"
-        className="scene-tool-button"
-        style={{
-          position: "absolute",
-          top: 28,
-          right: 180,
-          height: 42,
-          width: "auto",
-          paddingInline: 18,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          letterSpacing: "0.04em",
-          textTransform: "uppercase"
-        }}
-      >
-        <IconDownload size={18} /> Export Scene
-      </button>
     </div>
   );
 }
