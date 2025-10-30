@@ -1,40 +1,41 @@
 import CanvasArea from "../components/CanvasArea";
-import SidebarRight from "../components/SidebarRight";
+import SceneTools from "../components/SceneTools";
+import Sidebar from "../components/Sidebar";
 
 const referenceSections = [
   {
-    title: "Getting Started",
+    title: "Как начать",
     items: [
-      "Open the Scene Tools to reveal interaction layers.",
-      "Invite players from the lobby section and assign characters.",
-      "Upload battlemaps, then drag them into the canvas to stage the scene."
+      "Откройте Инструменты сцены, чтобы увидеть слои взаимодействия.",
+      "Пригласите игроков из лобби и назначьте им персонажей.",
+      "Загрузите карты и перетащите их на канвас, чтобы подготовить сцену."
     ]
   },
   {
-    title: "Session Beats",
+    title: "Ключевые моменты",
     items: [
-      "The party awakens within the Shrine of Echoes.",
-      "Solve the mirrored sigil puzzle to reveal the inner sanctum.",
-      "Defeat the guardian warden to recover the Astral Keystone."
+      "Отряд пробуждается в Святилище Эха.",
+      "Решите загадку зеркального сигила и откройте внутренний зал.",
+      "Победите стража-хранителя, чтобы вернуть Астральный Ключ-камень."
     ]
   }
 ];
 
 const quickNotes = [
   {
-    heading: "Macro Tips",
-    body: "Drag abilities or dice expressions onto the macro bar to bind them for the whole party."
+    heading: "Советы по макросам",
+    body: "Перетащите способности или формулы кубов на панель макросов, чтобы закрепить их для всей группы."
   },
   {
-    heading: "Scene Status",
-    body: "Pause the game from the canvas overlay to freeze tokens and hide GM-only updates."
+    heading: "Статус сцены",
+    body: "Приостановите игру через оверлей канваса, чтобы заморозить токены и скрыть GM-обновления."
   }
 ];
 
 const sessionLog = {
-  lastUpdated: "Last updated 5m ago",
+  lastUpdated: "Обновлено 5 минут назад",
   description:
-    "The mirrored hallway hums with latent energy as the party approaches the shrine altar. Arcane light gathers around the keystone, awaiting the final incantation."
+    "Зеркальный коридор гудит скрытой энергией, пока отряд приближается к алтарю. Свет сплетается вокруг ключ-камня, ожидая финального заклинания."
 };
 
 export default function MainLayout() {
@@ -42,7 +43,8 @@ export default function MainLayout() {
     <div className="workspace">
       <CanvasArea />
       <div className="workspace-overlay">
-        <SidebarRight referenceSections={referenceSections} quickNotes={quickNotes} sessionLog={sessionLog} />
+        <SceneTools />
+        <Sidebar referenceSections={referenceSections} quickNotes={quickNotes} sessionLog={sessionLog} />
       </div>
     </div>
   );
