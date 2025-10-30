@@ -12,7 +12,7 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - ./.env.example:/app/.env:ro
+      - ./.env:/app/.env:ro
     restart: unless-stopped
 
   discord_bridge:
@@ -22,5 +22,5 @@ services:
     command: [ "node", "server/discord_bridge.js" ]
     depends_on:
       - shrine_server
-    env_file: .env.example
+    env_file: .env
     restart: unless-stopped
