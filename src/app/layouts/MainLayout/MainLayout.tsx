@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   IconArchive,
   IconBackpack,
@@ -17,13 +17,38 @@ import { ChatDock } from "@/features/chat/components/ChatDock";
 import { PlayersOnline } from "@/features/players/components/PlayersOnline";
 import { SceneCanvas } from "@/features/scene/components/SceneCanvas";
 import { SceneTools } from "@/features/scene/components/SceneTools";
+import { DiceRoller } from "@/features/dice/components/DiceRoller";
 import {
   WorldSidebar,
   type WorldSidebarSection
 } from "@/features/sidebar/components/WorldSidebar";
 import { MOCK_PLAYERS } from "@/shared/data/mockPlayers";
+import type { ChatMessage } from "@/features/chat/types";
+
+const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
+  {
+    id: "1",
+    author: "Аэрин",
+    text: "Нашла тайный проход под алтарём.",
+    timestamp: "20:14",
+    type: "text"
+  },
+  {
+    id: "2",
+    author: "Каэл",
+    text: "Отправлю фамильяра вперёд — наготове.",
+    timestamp: "20:15",
+    type: "text"
+  }
+];
 
 export default function MainLayout() {
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT_MESSAGES);
+
+  const addChatMessage = useCallback((message: ChatMessage) => {
+    setChatMessages((prev) => [...prev, message]);
+  }, []);
+
   const sidebarSections = useMemo<WorldSidebarSection[]>(
     () => [
       {
@@ -32,7 +57,7 @@ export default function MainLayout() {
         icon: IconMessageCircle,
         description:
           "Chat messages, whispers, item/feature uses, and rolls will appear here. You and your players can configure who can see their rolls by changing the dropdown to Public Roll, Private GM Roll, Blind GM Roll, or Self-Roll. Gamemaster users will be able to see every roll except self rolls.",
-        content: <ChatDock />
+        content: <ChatDock messages={chatMessages} />
       },
       {
         id: "combat",
@@ -157,6 +182,7 @@ export default function MainLayout() {
 
       <div className="workspace-overlay">
         <SceneTools />
+        <DiceRoller onRollComplete={addChatMessage} />
         <WorldSidebar sections={sidebarSections} />
       </div>
     </div>
