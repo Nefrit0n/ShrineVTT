@@ -27,7 +27,11 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
       `#world-sidebar-tab-${activeTab}`
     );
 
-    activeButton?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    activeButton?.scrollIntoView({
+      behavior: "smooth",
+      inline: "nearest",
+      block: "nearest",
+    });
   }, [activeTab]);
 
   const updateScrollState = useCallback(() => {
@@ -39,10 +43,11 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
     }
 
     const { scrollLeft, scrollWidth, clientWidth } = el;
-    const maxScrollLeft = scrollWidth - clientWidth;
+    const maxScrollLeft = Math.max(0, scrollWidth - clientWidth);
+    const tolerance = 2;
 
-    setCanScrollLeft(scrollLeft > 1);
-    setCanScrollRight(scrollLeft < maxScrollLeft - 1);
+    setCanScrollLeft(scrollLeft > tolerance);
+    setCanScrollRight(scrollLeft < maxScrollLeft - tolerance);
   }, []);
 
   useEffect(() => {
@@ -70,10 +75,15 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
     const el = tabsViewportRef.current;
     if (!el) return;
 
-    const scrollAmount = Math.max(0, Math.floor(el.clientWidth * 0.75));
-    const nextScroll = direction === "left" ? -scrollAmount : scrollAmount;
+    const { clientWidth, scrollLeft, scrollWidth } = el;
+    const scrollAmount = Math.max(0, Math.floor(clientWidth * 0.75));
+    const maxScrollLeft = Math.max(0, scrollWidth - clientWidth);
+    const target =
+      direction === "left"
+        ? Math.max(0, scrollLeft - scrollAmount)
+        : Math.min(maxScrollLeft, scrollLeft + scrollAmount);
 
-    el.scrollBy({ left: nextScroll, behavior: "smooth" });
+    el.scrollTo({ left: target, behavior: "smooth" });
   }, []);
 
   return (
