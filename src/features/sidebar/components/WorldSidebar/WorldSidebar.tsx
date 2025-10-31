@@ -161,11 +161,7 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
             </div>
           </header>
         )}
-        <div className={bodyClassName}>
-          {activeSection?.content ?? (
-            <p className="sidebar-placeholder">Select a tab to view its tools.</p>
-          )}
-        </div>
+        <div className={bodyClassName}>{activeSection?.content ?? null}</div>
       </Panel>
     </aside>
   );

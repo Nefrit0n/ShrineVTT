@@ -77,7 +77,7 @@ a {
   pointer-events: auto;
 }
 
-.workspace-overlay > :not(.world-sidebar) {
+.workspace-overlay> :not(.world-sidebar) {
   margin-top: var(--workspace-padding);
 }
 
@@ -340,17 +340,11 @@ a {
   min-height: 0;
 }
 
-.world-sidebar__content-body--chat > * {
+.world-sidebar__content-body--chat>* {
   flex: 1;
   min-height: 0;
 }
 
-.sidebar-placeholder {
-  margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.6;
-  color: rgba(198, 210, 255, 0.78);
-}
 
 .players-list {
   display: flex;
@@ -537,7 +531,7 @@ a {
   z-index: 0;
 }
 
-.chat-message__card > * {
+.chat-message__card>* {
   position: relative;
   z-index: 1;
 }
@@ -643,7 +637,7 @@ a {
   pointer-events: none;
 }
 
-.chat-message__discord-card > * {
+.chat-message__discord-card>* {
   position: relative;
   z-index: 1;
 }
