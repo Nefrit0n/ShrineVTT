@@ -1,10 +1,13 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEventHandler,
   type ChangeEventHandler,
 } from "react";
+import clsx from "clsx";
 
 import type { ChatMessage } from "@/features/chat/types";
 
@@ -15,34 +18,67 @@ type ChatDockProps = {
 
 export default function ChatDock({ messages, onSendMessage }: ChatDockProps) {
   const [messageDraft, setMessageDraft] = useState("");
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const shouldSmoothScroll = distanceFromBottom < 160;
+
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: shouldSmoothScroll ? "smooth" : "auto",
+    });
+  }, [messages]);
 
   const renderedMessages = useMemo(
     () =>
       messages.map((message) => (
-        <article key={message.id} className="chat-message">
-          <header className="chat-message__header">
-            <strong>{message.author}</strong>
-            <time dateTime={message.timestamp}>{message.timestamp}</time>
-          </header>
-
-          <p
-            className="chat-message__text"
-            dangerouslySetInnerHTML={{ __html: message.text }}
-          />
-
-          {message.image && (
-            <img
-              src={message.image}
-              alt=""
-              style={{
-                marginTop: "6px",
-                maxWidth: "100%",
-                borderRadius: "8px",
-                boxShadow: "0 0 6px rgba(0,0,0,0.4)",
-                objectFit: "cover",
-              }}
-            />
+        <article
+          key={message.id}
+          className={clsx(
+            "chat-message",
+            message.origin && `chat-message--${message.origin}`
           )}
+        >
+          {message.origin === "discord" && (
+            <div className="chat-message__portrait" aria-hidden="true">
+              {message.image ? (
+                <img src={message.image} alt="" loading="lazy" />
+              ) : (
+                <span className="chat-message__portrait-initial">
+                  {(message.author || "")
+                    .trim()
+                    .slice(0, 1)
+                    .toUpperCase() || "?"}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="chat-message__body">
+            <header className="chat-message__meta">
+              <strong>{message.author}</strong>
+              {message.origin === "discord" && (
+                <span className="chat-message__badge">Discord Bot</span>
+              )}
+              <time
+                dateTime={message.isoTimestamp ?? message.timestamp}
+                aria-label={`Sent at ${message.timestamp}`}
+              >
+                {message.timestamp}
+              </time>
+            </header>
+
+            <div className="chat-message__bubble">
+              <div
+                className="chat-message__text"
+                dangerouslySetInnerHTML={{ __html: message.text }}
+              />
+            </div>
+          </div>
         </article>
       )),
     [messages]
@@ -63,11 +99,16 @@ export default function ChatDock({ messages, onSendMessage }: ChatDockProps) {
 
   return (
     <section className="chat-dock" aria-label="Session chat">
-      <header className="chat-dock__header">
-        <h3>Chat</h3>
-        <span>Party Channel</span>
-      </header>
-      <div className="chat-dock__messages">{renderedMessages}</div>
+      <div className="chat-dock__messages">
+        <div
+          ref={viewportRef}
+          className="chat-dock__scroller"
+          role="log"
+          aria-live="polite"
+        >
+          {renderedMessages}
+        </div>
+      </div>
       <footer className="chat-dock__composer">
         <form onSubmit={handleSubmit}>
           <input

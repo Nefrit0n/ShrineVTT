@@ -7,6 +7,10 @@ export type WorldSidebarSection = {
   icon: ComponentType<IconProps>;
   description?: string;
   content?: ReactNode;
+  hideHeader?: boolean;
+  panelPadding?: "none" | "sm" | "md" | "lg";
+  contentClassName?: string;
+  bodyClassName?: string;
 };
 
 export type WorldSidebarProps = {
