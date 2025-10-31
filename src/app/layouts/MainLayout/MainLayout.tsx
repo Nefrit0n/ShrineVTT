@@ -28,26 +28,8 @@ import { useShrineSocket } from "@/shared/utils/useShrineSocket";
 const formatTimestamp = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-const createInitialMessage = (id: string, author: string, text: string): ChatMessage => {
-  const iso = new Date().toISOString();
-  return {
-    id,
-    author,
-    text,
-    timestamp: formatTimestamp(iso),
-    isoTimestamp: iso,
-    type: "text",
-    origin: "system",
-  };
-};
-
-const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
-  createInitialMessage("1", "Аэрин", "Нашла тайный проход под алтарём."),
-  createInitialMessage("2", "Каэл", "Отправлю фамильяра вперёд — наготове."),
-];
-
 export default function MainLayout() {
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT_MESSAGES);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   const handleSocketMessage = useCallback((data: any) => {
     if (data.type === "chat_message") {
@@ -64,6 +46,10 @@ export default function MainLayout() {
         isoTimestamp,
         type: "text",
         image: data.image || undefined,
+        characterName:
+          typeof data.characterName === "string" && data.characterName.trim()
+            ? data.characterName.trim()
+            : undefined,
         origin:
           data.origin === "discord"
             ? "discord"

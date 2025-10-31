@@ -9,4 +9,5 @@ export type ChatMessage = {
   type: "text";
   image?: string;
   origin?: ChatMessageOrigin;
+  characterName?: string;
 };

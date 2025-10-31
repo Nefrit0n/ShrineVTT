@@ -156,6 +156,18 @@ function extractTextFromMessage(message) {
   return lines.join("\n\n").trim();
 }
 
+function extractCharacterName(message) {
+  const embed = message.embeds?.[0];
+
+  const authorName = embed?.author?.name?.trim();
+  if (authorName) return authorName;
+
+  const footerName = embed?.footer?.text?.trim();
+  if (footerName) return footerName;
+
+  return null;
+}
+
 async function resolveImage(message) {
   const embed = message.embeds?.[0];
   const attachment = message.attachments?.first?.();
@@ -191,6 +203,7 @@ client.on("messageCreate", async (message) => {
 
   try {
     const text = extractTextFromMessage(message);
+    const characterName = extractCharacterName(message);
     const image = await resolveImage(message);
 
     const payload = {
@@ -201,6 +214,7 @@ client.on("messageCreate", async (message) => {
       timestamp: message.createdAt?.toISOString?.() ?? new Date().toISOString(),
       messageId: message.id,
       origin: "discord",
+      characterName: characterName || undefined,
     };
 
     shrineSocket.send(payload);

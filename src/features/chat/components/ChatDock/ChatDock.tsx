@@ -120,6 +120,14 @@ export default function ChatDock({ messages, onSendMessage }: ChatDockProps) {
             : null;
         const standardBlocks =
           message.origin !== "discord" ? buildStandardBlocks(message.text) : [];
+        const displayAuthor =
+          message.origin === "discord"
+            ? message.characterName?.trim() || message.author
+            : message.author;
+        const viaLabel =
+          message.origin === "discord" && message.author && displayAuthor !== message.author
+            ? message.author
+            : null;
 
         return (
           <article
@@ -146,10 +154,12 @@ export default function ChatDock({ messages, onSendMessage }: ChatDockProps) {
 
             <div className="chat-message__body">
               <header className="chat-message__meta">
-                <strong>{message.author}</strong>
-                {message.origin === "discord" && (
-                  <span className="chat-message__badge">Discord Bot</span>
-                )}
+                <div className="chat-message__identity">
+                  <strong className="chat-message__name">{displayAuthor}</strong>
+                  {viaLabel && (
+                    <span className="chat-message__via">via {viaLabel}</span>
+                  )}
+                </div>
                 <time
                   dateTime={message.isoTimestamp ?? message.timestamp}
                   aria-label={`Sent at ${message.timestamp}`}
