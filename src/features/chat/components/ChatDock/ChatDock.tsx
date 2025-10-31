@@ -153,80 +153,85 @@ export default function ChatDock({ messages, onSendMessage }: ChatDockProps) {
             )}
 
             <div className="chat-message__body">
-              <header className="chat-message__meta">
-                <div className="chat-message__identity">
-                  <strong className="chat-message__name">{displayAuthor}</strong>
-                  {viaLabel && (
-                    <span className="chat-message__via">via {viaLabel}</span>
+              <div className="chat-message__card">
+                <header className="chat-message__meta">
+                  <div className="chat-message__identity">
+                    <strong className="chat-message__name">{displayAuthor}</strong>
+                  </div>
+                  <div className="chat-message__meta-tags">
+                    {viaLabel && (
+                      <span className="chat-message__via">via {viaLabel}</span>
+                    )}
+                    <time
+                      className="chat-message__timestamp"
+                      dateTime={message.isoTimestamp ?? message.timestamp}
+                      aria-label={`Sent at ${message.timestamp}`}
+                    >
+                      {message.timestamp}
+                    </time>
+                  </div>
+                </header>
+
+                <div className="chat-message__bubble">
+                  {message.origin === "discord" && discordSections ? (
+                    <div className="chat-message__discord-card">
+                      {discordSections.title && (
+                        <div className="chat-message__discord-title">
+                          {renderInline(discordSections.title)}
+                        </div>
+                      )}
+
+                      {discordSections.primaryLines.length > 0 && (
+                        <ul
+                          className="chat-message__discord-roll"
+                          role="list"
+                        >
+                          {discordSections.primaryLines.map((line, index) => (
+                            <li key={`primary-${index}`}>
+                              {renderInline(line)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {discordSections.extraSections.map((section, sectionIndex) => (
+                        <div
+                          className="chat-message__discord-section"
+                          key={`section-${sectionIndex}`}
+                        >
+                          {section.heading && (
+                            <div className="chat-message__discord-section-title">
+                              {renderInline(section.heading)}
+                            </div>
+                          )}
+
+                          {section.lines.length > 0 && (
+                            <ul className="chat-message__discord-roll" role="list">
+                              {section.lines.map((line, lineIndex) => (
+                                <li key={`section-${sectionIndex}-line-${lineIndex}`}>
+                                  {renderInline(line)}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="chat-message__text">
+                      {standardBlocks.map((block, blockIndex) => (
+                        <p key={`block-${blockIndex}`}>
+                          {block.map((line, lineIndex) => (
+                            <Fragment key={`block-${blockIndex}-line-${lineIndex}`}>
+                              {lineIndex > 0 && <br />}
+                              {renderInline(line)}
+                            </Fragment>
+                          ))}
+                        </p>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <time
-                  dateTime={message.isoTimestamp ?? message.timestamp}
-                  aria-label={`Sent at ${message.timestamp}`}
-                >
-                  {message.timestamp}
-                </time>
-              </header>
-
-              <div className="chat-message__bubble">
-                {message.origin === "discord" && discordSections ? (
-                  <div className="chat-message__discord-card">
-                    {discordSections.title && (
-                      <div className="chat-message__discord-title">
-                        {renderInline(discordSections.title)}
-                      </div>
-                    )}
-
-                    {discordSections.primaryLines.length > 0 && (
-                      <ul
-                        className="chat-message__discord-roll"
-                        role="list"
-                      >
-                        {discordSections.primaryLines.map((line, index) => (
-                          <li key={`primary-${index}`}>
-                            {renderInline(line)}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-
-                    {discordSections.extraSections.map((section, sectionIndex) => (
-                      <div
-                        className="chat-message__discord-section"
-                        key={`section-${sectionIndex}`}
-                      >
-                        {section.heading && (
-                          <div className="chat-message__discord-section-title">
-                            {renderInline(section.heading)}
-                          </div>
-                        )}
-
-                        {section.lines.length > 0 && (
-                          <ul className="chat-message__discord-roll" role="list">
-                            {section.lines.map((line, lineIndex) => (
-                              <li key={`section-${sectionIndex}-line-${lineIndex}`}>
-                                {renderInline(line)}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="chat-message__text">
-                    {standardBlocks.map((block, blockIndex) => (
-                      <p key={`block-${blockIndex}`}>
-                        {block.map((line, lineIndex) => (
-                          <Fragment key={`block-${blockIndex}-line-${lineIndex}`}>
-                            {lineIndex > 0 && <br />}
-                            {renderInline(line)}
-                          </Fragment>
-                        ))}
-                      </p>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           </article>
