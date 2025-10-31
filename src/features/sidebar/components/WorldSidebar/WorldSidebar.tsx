@@ -86,6 +86,18 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
     el.scrollTo({ left: target, behavior: "smooth" });
   }, []);
 
+  const panelPadding = activeSection?.panelPadding ?? "sm";
+  const contentClassName = clsx(
+    "world-sidebar__content",
+    activeSection?.contentClassName,
+    { "world-sidebar__content--flush": activeSection?.hideHeader }
+  );
+  const bodyClassName = clsx(
+    "world-sidebar__content-body",
+    activeSection?.bodyClassName,
+    { "world-sidebar__content-body--flush": activeSection?.hideHeader }
+  );
+
   return (
     <aside className="world-sidebar" aria-label="World sidebar">
       <div className="world-sidebar__tabs">
@@ -133,13 +145,13 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
       </div>
 
       <Panel
-        padding="sm"
-        className="world-sidebar__content"
+        padding={panelPadding}
+        className={contentClassName}
         aria-labelledby={activeSection ? `world-sidebar-tab-${activeSection.id}` : undefined}
         role="tabpanel"
         id={activeSection ? `world-sidebar-tabpanel-${activeSection.id}` : undefined}
       >
-        {activeSection && (
+        {activeSection && !activeSection.hideHeader && (
           <header className="world-sidebar__content-header">
             <div className="world-sidebar__content-heading">
               <h3>{activeSection.title}</h3>
@@ -147,7 +159,7 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
             </div>
           </header>
         )}
-        <div className="world-sidebar__content-body">
+        <div className={bodyClassName}>
           {activeSection?.content ?? (
             <p className="sidebar-placeholder">Select a tab to view its tools.</p>
           )}
