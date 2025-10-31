@@ -12,13 +12,23 @@ function broadcast(msg) {
 wss.on("connection", (socket) => {
   socket.on("message", (raw) => {
     const data = JSON.parse(raw);
-    if (data.type === "chat_message") broadcast(data);
+
+    if (data.type === "chat_message") {
+      broadcast({
+        ...data,
+        timestamp: data.timestamp ?? new Date().toISOString(),
+        origin: data.origin ?? "player",
+      });
+    }
+
     if (data.type === "lss_roll") {
       const { user, text } = data.payload;
       broadcast({
         type: "chat_message",
         author: user,
-        text: text,
+        text,
+        timestamp: new Date().toISOString(),
+        origin: "discord",
       });
     }
   });
