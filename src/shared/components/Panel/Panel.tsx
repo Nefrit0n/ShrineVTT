@@ -6,6 +6,7 @@ import styles from "./Panel.module.css";
 type PanelProps = PropsWithChildren<{
   className?: string;
   padding?: "none" | "sm" | "md" | "lg";
+  chrome?: boolean;
 }> &
   HTMLAttributes<HTMLElement>;
 
@@ -17,10 +18,16 @@ export default function Panel({
   children,
   className,
   padding = "md",
+  chrome = true,
   ...props
 }: PanelProps) {
+  const panelClasses = clsx(
+    chrome ? [styles.panel, styles[padding]] : styles[padding],
+    className
+  );
+
   return (
-    <section {...props} className={clsx(styles.panel, styles[padding], className)}>
+    <section {...props} className={panelClasses}>
       {children}
     </section>
   );
