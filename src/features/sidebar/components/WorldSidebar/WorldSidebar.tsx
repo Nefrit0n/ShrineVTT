@@ -87,6 +87,7 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
   }, []);
 
   const panelPadding = activeSection?.panelPadding ?? "sm";
+  const panelChrome = activeSection?.panelChrome ?? true;
   const contentClassName = clsx(
     "world-sidebar__content",
     activeSection?.contentClassName,
@@ -146,6 +147,7 @@ export default function WorldSidebar({ sections, initialSectionId }: WorldSideba
 
       <Panel
         padding={panelPadding}
+        chrome={panelChrome}
         className={contentClassName}
         aria-labelledby={activeSection ? `world-sidebar-tab-${activeSection.id}` : undefined}
         role="tabpanel"
