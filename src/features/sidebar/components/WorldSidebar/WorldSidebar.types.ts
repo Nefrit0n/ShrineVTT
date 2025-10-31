@@ -9,6 +9,7 @@ export type WorldSidebarSection = {
   content?: ReactNode;
   hideHeader?: boolean;
   panelPadding?: "none" | "sm" | "md" | "lg";
+  panelChrome?: boolean;
   contentClassName?: string;
   bodyClassName?: string;
 };

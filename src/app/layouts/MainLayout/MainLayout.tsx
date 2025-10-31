@@ -109,6 +109,7 @@ export default function MainLayout() {
       icon: IconMessageCircle,
       hideHeader: true,
       panelPadding: "none",
+      panelChrome: false,
       contentClassName: "world-sidebar__content--chat",
       bodyClassName: "world-sidebar__content-body--chat",
       content: <ChatDock messages={chatMessages} onSendMessage={handleSendChatMessage} />
