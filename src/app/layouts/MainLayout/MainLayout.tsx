@@ -25,21 +25,25 @@ import { MOCK_PLAYERS } from "@/shared/data/mockPlayers";
 import type { ChatMessage } from "@/features/chat/types";
 import { useShrineSocket } from "@/shared/utils/useShrineSocket";
 
+const formatTimestamp = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+const createInitialMessage = (id: string, author: string, text: string): ChatMessage => {
+  const iso = new Date().toISOString();
+  return {
+    id,
+    author,
+    text,
+    timestamp: formatTimestamp(iso),
+    isoTimestamp: iso,
+    type: "text",
+    origin: "system",
+  };
+};
+
 const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
-  {
-    id: "1",
-    author: "Аэрин",
-    text: "Нашла тайный проход под алтарём.",
-    timestamp: "20:14",
-    type: "text"
-  },
-  {
-    id: "2",
-    author: "Каэл",
-    text: "Отправлю фамильяра вперёд — наготове.",
-    timestamp: "20:15",
-    type: "text"
-  }
+  createInitialMessage("1", "Аэрин", "Нашла тайный проход под алтарём."),
+  createInitialMessage("2", "Каэл", "Отправлю фамильяра вперёд — наготове."),
 ];
 
 export default function MainLayout() {
@@ -47,18 +51,33 @@ export default function MainLayout() {
 
   const handleSocketMessage = useCallback((data: any) => {
     if (data.type === "chat_message") {
+      const isoTimestamp =
+        typeof data.timestamp === "string" ? data.timestamp : new Date().toISOString();
+      const messageId: string =
+        data.messageId || data.clientMessageId || data.id || crypto.randomUUID();
+
       const msg: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: messageId,
         author: data.author || "System",
-        text: data.text,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
+        text: data.text ?? "",
+        timestamp: formatTimestamp(isoTimestamp),
+        isoTimestamp,
         type: "text",
-        image: data.image || undefined, // ← добавь это
+        image: data.image || undefined,
+        origin:
+          data.origin === "discord"
+            ? "discord"
+            : data.origin === "player"
+              ? "player"
+              : data.origin ?? "system",
       };
-      setChatMessages((prev) => [...prev, msg]);
+
+      setChatMessages((prev) => {
+        if (prev.some((existing) => existing.id === msg.id)) {
+          return prev;
+        }
+        return [...prev, msg];
+      });
     }
   }, []);
 
@@ -67,21 +86,31 @@ export default function MainLayout() {
   const handleSendChatMessage = useCallback(
     (text: string) => {
       const now = new Date();
-      const timestamp = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const isoTimestamp = now.toISOString();
+      const messageId = crypto.randomUUID();
 
       const message: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: messageId,
         author: "You",
         text,
-        timestamp,
-        type: "text"
+        timestamp: formatTimestamp(isoTimestamp),
+        isoTimestamp,
+        type: "text",
+        origin: "player",
       };
 
       setChatMessages((prev) => [...prev, message]);
 
       // отправляем сообщение на сервер
       wsRef.current?.send(
-        JSON.stringify({ type: "chat_message", author: "You", text })
+        JSON.stringify({
+          type: "chat_message",
+          author: "You",
+          text,
+          timestamp: isoTimestamp,
+          origin: "player",
+          clientMessageId: messageId,
+        })
       );
     },
     [wsRef]
@@ -92,8 +121,10 @@ export default function MainLayout() {
       id: "chat",
       title: "Chat",
       icon: IconMessageCircle,
-      description:
-        "Chat messages and whispers will appear here so you can keep track of the table talk at a glance.",
+      hideHeader: true,
+      panelPadding: "none",
+      contentClassName: "world-sidebar__content--chat",
+      bodyClassName: "world-sidebar__content-body--chat",
       content: <ChatDock messages={chatMessages} onSendMessage={handleSendChatMessage} />
     },
     {
