@@ -123,6 +123,7 @@ function useElementSize<T extends HTMLElement>() {
   return { ref, size } as const;
 }
 
+// Чипы тегов с автодополнением и быстрым удалением
 function TagInput({ value, suggestions, onChange }: TagInputProps) {
   const [inputValue, setInputValue] = useState("");
   const [isFocused, setFocused] = useState(false);
@@ -212,6 +213,23 @@ function TagInput({ value, suggestions, onChange }: TagInputProps) {
         )}
       </div>
     </div>
+  );
+}
+
+// Обёртка для тултипов, чтобы подсказать режим и статус
+function TooltipLabel({
+  children,
+  description,
+}: {
+  children: string;
+  description: string;
+}) {
+  return (
+    <span className={styles.tooltip}>
+      {children}
+      <IconInfoCircle size={16} stroke={1.6} aria-hidden />
+      <span className={styles.tooltipText}>{description}</span>
+    </span>
   );
 }
 
@@ -939,6 +957,7 @@ export default function ScenesTab({
 
   const { ref: listContainerRef, size: listSize } = useElementSize<HTMLDivElement>();
 
+  // Debounce поиска, чтобы не дёргать фильтрацию на каждый ввод
   useEffect(() => {
     const handle = window.setTimeout(() => setSearchQuery(searchInput), SEARCH_DEBOUNCE);
     return () => window.clearTimeout(handle);
@@ -1339,9 +1358,12 @@ export default function ScenesTab({
                     }
                   />
                 </div>
+                {/* Превью выбранного фона, чтобы видеть итог сразу */}
                 <div className={styles.previewBox}>
                   {backgroundPreview ? (
-                    <img src={backgroundPreview} alt="Предпросмотр фона" />
+                    <div className={styles.previewImageWrapper}>
+                      <img src={backgroundPreview} alt="Предпросмотр фона" />
+                    </div>
                   ) : (
                     <span className={styles.previewPlaceholder}>
                       Выберите изображение или вставьте ссылку, чтобы увидеть превью
@@ -1454,6 +1476,7 @@ export default function ScenesTab({
 
             {formError ? <p className={styles.formError}>{formError}</p> : null}
 
+            {/* Прикреплённый футер с действиями формы */}
             <div className={styles.formFooter}>
               {formMode === "edit" && (
                 <button
@@ -1485,6 +1508,7 @@ export default function ScenesTab({
           </div>
           <div className={styles.listBody} ref={listContainerRef}>
             {filteredScenes.length ? (
+              // Виртуализируем список сцен для плавной прокрутки
               <FixedSizeList
                 height={listHeight}
                 width={Math.max(1, listSize.width)}
