@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   IconArchive,
   IconBackpack,
@@ -21,6 +21,9 @@ import {
   WorldSidebar,
   type WorldSidebarSection
 } from "@/features/sidebar/components/WorldSidebar";
+import { ScenesTab } from "@/features/scenes/components/ScenesTab";
+import { fetchScenes } from "@/features/scenes/api/scenesApi";
+import type { Scene } from "@/features/scenes/types";
 import { MOCK_PLAYERS } from "@/shared/data/mockPlayers";
 import type { ChatMessage } from "@/features/chat/types";
 import { useShrineSocket } from "@/shared/utils/useShrineSocket";
@@ -30,6 +33,18 @@ const formatTimestamp = (iso: string) =>
 
 export default function MainLayout() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
+
+  const refreshScenes = useCallback(async () => {
+    try {
+      const data = await fetchScenes();
+      setScenes(data.scenes);
+      setActiveSceneId(data.activeSceneId);
+    } catch (error) {
+      console.error("Не удалось загрузить сцены", error);
+    }
+  }, []);
 
   const handleSocketMessage = useCallback((data: any) => {
     if (data.type === "chat_message") {
@@ -65,9 +80,22 @@ export default function MainLayout() {
         return [...prev, msg];
       });
     }
-  }, []);
+    if (data.type === "scenesUpdated") {
+      refreshScenes();
+    }
+
+    if (data.type === "sceneActivated") {
+      if (typeof data.sceneId === "string") {
+        setActiveSceneId(data.sceneId);
+      }
+    }
+  }, [refreshScenes]);
 
   const wsRef = useShrineSocket(handleSocketMessage);
+
+  useEffect(() => {
+    refreshScenes();
+  }, [refreshScenes]);
 
   const handleSendChatMessage = useCallback(
     (text: string) => {
@@ -111,6 +139,11 @@ export default function MainLayout() {
     panelPadding: "none",
   };
 
+  const activeScene = useMemo(
+    () => scenes.find((scene) => scene.id === activeSceneId) ?? null,
+    [activeSceneId, scenes]
+  );
+
   const sidebarSections = useMemo<WorldSidebarSection[]>(() => [
     {
       id: "chat",
@@ -131,9 +164,16 @@ export default function MainLayout() {
     },
     {
       id: "scenes",
-      title: "Scenes",
+      title: "Сцены",
       icon: IconLayoutKanban,
-      ...placeholderSectionDefaults,
+      content: (
+        <ScenesTab
+          scenes={scenes}
+          activeSceneId={activeSceneId}
+          onScenesUpdated={refreshScenes}
+          onActivateLocally={setActiveSceneId}
+        />
+      ),
     },
     {
       id: "actors",
@@ -184,12 +224,12 @@ export default function MainLayout() {
       ...placeholderSectionDefaults,
     }
   ],
-    [chatMessages, handleSendChatMessage]
+    [chatMessages, handleSendChatMessage, scenes, activeSceneId, refreshScenes]
   );
 
   return (
     <div className="workspace">
-      <SceneCanvas />
+      <SceneCanvas activeScene={activeScene} />
       <div className="workspace-overlay">
         <SceneTools />
         <WorldSidebar sections={sidebarSections} />
