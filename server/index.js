@@ -299,6 +299,49 @@ app.post("/api/scenes/:id/duplicate", async (req, res) => {
   res.status(201).json(duplicated);
 });
 
+// Пересортировка сцен по переданному порядку идентификаторов
+app.post("/api/scenes/reorder", async (req, res) => {
+  const { ids } = req.body ?? {};
+  if (!Array.isArray(ids)) {
+    res.status(400).send("Некорректные данные для сортировки");
+    return;
+  }
+
+  const normalized = ids
+    .map((id) => (typeof id === "string" ? id.trim() : ""))
+    .filter(Boolean);
+
+  if (!normalized.length) {
+    res.status(400).send("Список идентификаторов пуст");
+    return;
+  }
+
+  const state = await store.getState();
+  const seen = new Set();
+  const reordered = [];
+
+  for (const id of normalized) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const existing = state.scenes.find((scene) => scene.id === id);
+    if (existing) {
+      reordered.push(existing);
+    }
+  }
+
+  if (!reordered.length) {
+    res.status(400).send("Не удалось сопоставить идентификаторы сцен");
+    return;
+  }
+
+  const leftovers = state.scenes.filter((scene) => !seen.has(scene.id));
+  state.scenes = [...reordered, ...leftovers];
+  await store.save();
+
+  broadcast(wss, { type: "scenesUpdated" });
+  res.json({ success: true });
+});
+
 // Активация сцены и оповещение игроков
 app.post("/api/scenes/:id/activate", async (req, res) => {
   const state = await store.getState();

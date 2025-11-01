@@ -78,3 +78,12 @@ export async function activateScene(id: string): Promise<{ success: true }>{
   });
   return handleResponse(response);
 }
+
+export async function reorderScenes(ids: string[]): Promise<{ success: true }> {
+  const response = await fetch(`${API_BASE_URL}/api/scenes/reorder`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ ids }),
+  });
+  return handleResponse(response);
+}

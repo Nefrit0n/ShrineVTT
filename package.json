@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@hello-pangea/dnd": "^18.0.1",
     "@radix-ui/react-scroll-area": "^1.1.0",
     "@tabler/icons-react": "^3.6.0",
     "clsx": "^2.1.1",
