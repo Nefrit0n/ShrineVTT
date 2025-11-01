@@ -469,11 +469,34 @@
 .listBody {
   flex: 1;
   min-height: 0;
-  padding: 0 6px 12px;
+  padding: 0;
+  position: relative;
+}
+
+.virtualList {
+  box-sizing: border-box;
+  padding: 6px 10px 14px;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 140, 184, 0.45) transparent;
+}
+
+.virtualList::-webkit-scrollbar {
+  width: 8px;
+}
+
+.virtualList::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(120, 140, 184, 0.4), rgba(96, 116, 168, 0.4));
+}
+
+.virtualList::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .row {
-  padding: 6px 6px 12px;
+  padding: 6px 0 12px;
 }
 
 .sceneCard {
@@ -486,6 +509,7 @@
   border: 1px solid transparent;
   background: rgba(22, 26, 40, 0.88);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  width: 100%;
 }
 
 .sceneCard:hover {
