@@ -233,6 +233,712 @@ function TooltipLabel({
   );
 }
 
+function TooltipLabel({
+  children,
+  description,
+}: {
+  children: string;
+  description: string;
+}) {
+  return (
+    <span className={styles.tooltip}>
+      {children}
+      <IconInfoCircle size={16} stroke={1.6} aria-hidden />
+      <span className={styles.tooltipText}>{description}</span>
+    </span>
+  );
+}
+
+const ScenesTabRoot = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+`;
+
+const ActionsRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+`;
+
+const SearchInput = styled.input`
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(102, 124, 198, 0.55);
+  background: rgba(16, 20, 38, 0.78);
+  color: rgba(230, 236, 255, 0.92);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+
+  &::placeholder {
+    color: rgba(176, 188, 228, 0.65);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: rgba(138, 162, 255, 0.8);
+    box-shadow: 0 0 0 2px rgba(138, 162, 255, 0.28);
+    background: rgba(20, 26, 48, 0.88);
+  }
+`;
+
+const CreateButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(118, 146, 224, 0.45);
+  background: linear-gradient(135deg, rgba(118, 146, 224, 0.48), rgba(78, 104, 186, 0.54));
+  color: rgba(236, 241, 255, 0.95);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, transform 0.18s ease;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    border-color: rgba(148, 174, 252, 0.68);
+    background: linear-gradient(135deg, rgba(132, 162, 238, 0.55), rgba(88, 116, 198, 0.6));
+    box-shadow: 0 0 0 2px rgba(138, 162, 255, 0.2);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+
+const InlineError = styled.p`
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(110, 38, 58, 0.35);
+  border: 1px solid rgba(208, 94, 122, 0.55);
+  color: rgba(255, 214, 226, 0.92);
+  font-size: 0.86rem;
+`;
+
+const ListWrapper = styled.div`
+  flex: 1;
+  min-height: 0;
+  position: relative;
+`;
+
+const ListEmpty = styled.p`
+  margin: 0;
+  padding: 28px 12px;
+  text-align: center;
+  color: rgba(180, 192, 230, 0.7);
+`;
+
+const SceneRow = styled.div`
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding-bottom: 12px;
+`;
+
+const SceneCard = styled.article<{ $active: boolean }>`
+  position: relative;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  height: calc(100% - 12px);
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(18, 22, 40, 0.88);
+  border: 1px solid rgba(82, 104, 184, 0.48);
+  box-shadow: inset 0 0 0 1px rgba(132, 152, 226, 0.08);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, transform 0.18s ease;
+
+  &:hover {
+    background: rgba(24, 30, 54, 0.94);
+    box-shadow: 0 16px 36px rgba(8, 12, 26, 0.35);
+  }
+
+  ${(props) =>
+    props.$active &&
+    css`
+      border-color: rgba(138, 172, 255, 0.82);
+      box-shadow: 0 0 0 2px rgba(138, 172, 255, 0.32), 0 18px 32px rgba(18, 28, 54, 0.55);
+      background: rgba(22, 30, 58, 0.95);
+    `};
+
+  @media (max-width: 720px) {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+`;
+
+const PreviewButton = styled.button`
+  position: relative;
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(88, 112, 194, 0.48);
+  background: rgba(26, 32, 58, 0.76);
+  cursor: pointer;
+  min-height: 96px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+
+  &:focus-visible {
+    outline: none;
+    border-color: rgba(138, 162, 255, 0.82);
+    box-shadow: 0 0 0 2px rgba(138, 162, 255, 0.28);
+  }
+`;
+
+const PreviewImage = styled.img`
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+`;
+
+const PreviewPlaceholder = styled.div`
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  padding: 18px;
+  color: rgba(188, 198, 236, 0.7);
+  font-size: 0.85rem;
+`;
+
+const CardContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+`;
+
+const SceneHeading = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+`;
+
+const SceneName = styled.h4`
+  margin: 0;
+  color: rgba(236, 240, 255, 0.96);
+  font-size: 1.02rem;
+  font-weight: 600;
+  word-break: break-word;
+`;
+
+const ActionsGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const PrimaryActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const IconButton = styled.button`
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(92, 118, 205, 0.5);
+  background: rgba(24, 30, 58, 0.88);
+  color: rgba(218, 226, 255, 0.92);
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, transform 0.18s ease;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    border-color: rgba(138, 162, 255, 0.68);
+    background: rgba(32, 40, 70, 0.92);
+    box-shadow: 0 0 0 2px rgba(138, 162, 255, 0.18);
+  }
+
+  &:active {
+    transform: translateY(1px);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+`;
+
+const DeleteIconButton = styled(IconButton)`
+  border-color: rgba(224, 124, 148, 0.5);
+  background: rgba(68, 26, 40, 0.82);
+  color: rgba(255, 210, 222, 0.92);
+
+  &:hover,
+  &:focus-visible {
+    border-color: rgba(240, 160, 182, 0.72);
+    background: rgba(84, 34, 48, 0.88);
+    box-shadow: 0 0 0 2px rgba(240, 160, 182, 0.2);
+  }
+`;
+
+const MoreButton = styled(IconButton)`
+  width: 32px;
+  height: 32px;
+`;
+
+const SceneMeta = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: rgba(188, 198, 236, 0.78);
+`;
+
+const SceneTags = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
+
+const SceneTag = styled.span`
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(72, 110, 210, 0.22);
+  border: 1px solid rgba(96, 130, 220, 0.32);
+  font-size: 0.78rem;
+  color: rgba(206, 216, 250, 0.9);
+`;
+
+const StatusBadge = styled.span<{ $status: SceneStatus }>`
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: ${(props) => STATUS_COLORS[props.$status]};
+  color: ${(props) => STATUS_TEXT_COLORS[props.$status]};
+`;
+
+const MenuContainerBase = styled.div`
+  position: fixed;
+  z-index: 1500;
+  min-width: 200px;
+  padding: 8px 0;
+  border-radius: 12px;
+  border: 1px solid rgba(92, 118, 205, 0.55);
+  background: rgba(16, 20, 36, 0.98);
+  box-shadow: 0 20px 40px rgba(6, 8, 20, 0.55);
+`;
+
+const MenuItemButton = styled.button`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: none;
+  border: none;
+  color: rgba(214, 222, 255, 0.92);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    background: rgba(34, 42, 72, 0.78);
+    color: rgba(234, 240, 255, 0.96);
+  }
+`;
+
+const ModalOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 8, 16, 0.72);
+  backdrop-filter: blur(4px);
+  padding: 24px;
+  z-index: 1400;
+`;
+
+const ModalCard = styled.div`
+  width: min(560px, 100%);
+  max-height: min(88vh, 720px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  border: 1px solid rgba(102, 132, 210, 0.38);
+  background: linear-gradient(160deg, rgba(16, 20, 36, 0.96), rgba(10, 12, 26, 0.92));
+  box-shadow: 0 28px 60px rgba(6, 8, 20, 0.6);
+  overflow: hidden;
+`;
+
+const ModalHeader = styled.header`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid rgba(88, 110, 198, 0.32);
+  color: rgba(230, 236, 255, 0.96);
+`;
+
+const ModalTitle = styled.h3`
+  margin: 0;
+  font-size: 1.05rem;
+`;
+
+const CloseModalButton = styled.button`
+  border: none;
+  background: none;
+  color: rgba(208, 214, 240, 0.8);
+  font-size: 1.6rem;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  transition: background 0.18s ease, color 0.18s ease;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    background: rgba(42, 52, 86, 0.6);
+    color: rgba(240, 244, 255, 0.95);
+  }
+`;
+
+const FormLayout = styled.form`
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+`;
+
+const FormBody = styled.div`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+`;
+
+const FormSection = styled.section`
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+`;
+
+const SectionTitle = styled.h4`
+  margin: 0;
+  font-size: 0.95rem;
+  color: rgba(230, 236, 255, 0.94);
+  font-weight: 600;
+`;
+
+const SectionGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+
+  @media (max-width: 1200px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const DimensionsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+
+  @media (max-width: 1200px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const Field = styled.label`
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: rgba(194, 204, 238, 0.88);
+`;
+
+const FieldTitle = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+`;
+
+const TooltipIconWrapper = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: rgba(168, 186, 242, 0.82);
+  cursor: help;
+`;
+
+const InputBase = styled.input`
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(96, 122, 200, 0.48);
+  background: rgba(18, 22, 40, 0.85);
+  color: rgba(230, 236, 255, 0.92);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+
+  &::placeholder {
+    color: rgba(170, 184, 224, 0.65);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: rgba(138, 162, 255, 0.82);
+    box-shadow: 0 0 0 2px rgba(138, 162, 255, 0.26);
+    background: rgba(22, 28, 48, 0.92);
+  }
+`;
+
+const SelectBase = styled.select`
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(96, 122, 200, 0.48);
+  background: rgba(18, 22, 40, 0.85);
+  color: rgba(230, 236, 255, 0.92);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+
+  &:focus-visible {
+    outline: none;
+    border-color: rgba(138, 162, 255, 0.82);
+    box-shadow: 0 0 0 2px rgba(138, 162, 255, 0.26);
+    background: rgba(22, 28, 48, 0.92);
+  }
+`;
+
+const TagFieldWrapper = styled.div`
+  position: relative;
+`;
+
+const TagArea = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px dashed rgba(108, 132, 210, 0.48);
+  background: rgba(18, 22, 40, 0.78);
+  min-height: 48px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+
+  &:focus-within {
+    border-color: rgba(138, 162, 255, 0.82);
+    box-shadow: 0 0 0 2px rgba(138, 162, 255, 0.22);
+  }
+`;
+
+const TagChip = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(76, 112, 208, 0.24);
+  border: 1px solid rgba(96, 132, 220, 0.32);
+  color: rgba(210, 220, 252, 0.94);
+  font-size: 0.8rem;
+`;
+
+const RemoveTagButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(32, 40, 70, 0.85);
+  color: rgba(228, 234, 255, 0.9);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    background: rgba(52, 64, 96, 0.95);
+  }
+`;
+
+const TagInput = styled.input`
+  flex: 1;
+  min-width: 120px;
+  border: none;
+  background: transparent;
+  color: rgba(230, 236, 255, 0.92);
+  padding: 6px;
+
+  &:focus-visible {
+    outline: none;
+  }
+`;
+
+const TagSuggestions = styled.ul`
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  border-radius: 12px;
+  border: 1px solid rgba(98, 128, 210, 0.45);
+  background: rgba(16, 20, 36, 0.98);
+  box-shadow: 0 16px 32px rgba(8, 12, 26, 0.55);
+  z-index: 10;
+`;
+
+const TagSuggestionButton = styled.button`
+  width: 100%;
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  color: rgba(214, 222, 255, 0.92);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    background: rgba(34, 42, 72, 0.78);
+    color: rgba(236, 240, 255, 0.96);
+  }
+`;
+
+const BackgroundPreview = styled.div`
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(92, 118, 205, 0.45);
+  background: rgba(26, 32, 58, 0.78);
+  max-height: 220px;
+`;
+
+const BackgroundPreviewImage = styled.img`
+  display: block;
+  width: 100%;
+  height: auto;
+`;
+
+const FormError = styled.p`
+  margin: 0;
+  color: #ff9aa2;
+  font-weight: 600;
+  text-align: center;
+`;
+
+const StickyFooter = styled.div`
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 14px 24px 20px;
+  background: linear-gradient(180deg, rgba(16, 20, 36, 0.94), rgba(10, 12, 24, 0.95));
+  box-shadow: 0 -12px 28px rgba(6, 8, 20, 0.55);
+`;
+
+const SecondaryButton = styled.button`
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(92, 118, 205, 0.45);
+  background: rgba(22, 28, 48, 0.85);
+  color: rgba(226, 232, 255, 0.9);
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    border-color: rgba(138, 162, 255, 0.72);
+    background: rgba(32, 40, 70, 0.9);
+    box-shadow: 0 0 0 2px rgba(138, 162, 255, 0.18);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+
+const PrimaryButton = styled(SecondaryButton)`
+  background: linear-gradient(135deg, rgba(126, 156, 236, 0.6), rgba(92, 124, 210, 0.66));
+  border-color: rgba(134, 166, 244, 0.62);
+  color: rgba(240, 244, 255, 0.96);
+
+  &:hover,
+  &:focus-visible {
+    background: linear-gradient(135deg, rgba(136, 168, 248, 0.68), rgba(102, 134, 220, 0.72));
+  }
+`;
+
+const PreviewModalCard = styled(ModalCard)`
+  width: min(720px, 100%);
+`;
+
+const PreviewBody = styled.div`
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(12, 16, 32, 0.92);
+`;
+
+const PreviewImageLarge = styled.img`
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(92, 118, 205, 0.45);
+`;
+
+const MenuContainer = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  (props, ref) => <MenuContainerBase {...props} ref={ref} data-scene-menu />
+);
+
+MenuContainer.displayName = "MenuContainer";
+
+const ListOuterElementBase = styled.div`
+  height: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-right: 6px;
+`;
+
+const ListOuterElement = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ children, ...rest }, ref) => (
+    <ListOuterElementBase {...rest} ref={ref} role="list">
+      {children}
+    </ListOuterElementBase>
+  )
+);
+
+ListOuterElement.displayName = "ListOuterElement";
+
 export default function ScenesTab({
   scenes,
   activeSceneId,
