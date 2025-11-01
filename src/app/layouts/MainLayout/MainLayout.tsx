@@ -17,6 +17,7 @@ import { ChatDock } from "@/features/chat/components/ChatDock";
 import { PlayersOnline } from "@/features/players/components/PlayersOnline";
 import { SceneCanvas } from "@/features/scene/components/SceneCanvas";
 import { SceneTools } from "@/features/scene/components/SceneTools";
+import { ScenesPanel } from "@/features/scene/components/ScenesPanel";
 import {
   WorldSidebar,
   type WorldSidebarSection
@@ -134,6 +135,7 @@ export default function MainLayout() {
       title: "Scenes",
       icon: IconLayoutKanban,
       ...placeholderSectionDefaults,
+      content: <ScenesPanel />
     },
     {
       id: "actors",
