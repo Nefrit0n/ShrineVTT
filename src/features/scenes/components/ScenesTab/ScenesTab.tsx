@@ -246,6 +246,7 @@ export default function ScenesTab({
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [formError, setFormError] = useState<string | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [isFormOpen, setFormOpen] = useState(false);
   const [previewScene, setPreviewScene] = useState<Scene | null>(null);
   const [menuState, setMenuState] = useState<MenuState | null>(null);
 
@@ -279,11 +280,28 @@ export default function ScenesTab({
 
   const backgroundPreview = formState.backgroundData || formState.backgroundUrl;
 
-  const resetForm = useCallback(() => {
+  const resetFormState = useCallback(() => {
     setFormState(emptyFormState);
     setFormMode("create");
     setFormError(null);
   }, []);
+
+  const openCreateForm = useCallback(() => {
+    resetFormState();
+    setFormOpen(true);
+  }, [resetFormState]);
+
+  const closeForm = useCallback(() => {
+    resetFormState();
+    setFormOpen(false);
+  }, [resetFormState]);
+
+  useEffect(() => {
+    if (!scenes.length) {
+      resetFormState();
+      setFormOpen(true);
+    }
+  }, [resetFormState, scenes.length]);
 
   const handleOpenEdit = useCallback(
     async (sceneId: string) => {
@@ -304,6 +322,7 @@ export default function ScenesTab({
         setFormMode("edit");
         setFormError(null);
         setGlobalError(null);
+        setFormOpen(true);
       } catch (error) {
         console.error(error);
         setGlobalError("Не удалось загрузить данные сцены");
@@ -430,9 +449,9 @@ export default function ScenesTab({
       } else if (formState.id) {
         await updateScene(formState.id, payload);
       }
-      resetForm();
       setGlobalError(null);
       await syncScenes();
+      closeForm();
     } catch (error) {
       console.error(error);
       setFormError("Не удалось сохранить сцену");
@@ -582,7 +601,7 @@ export default function ScenesTab({
         <button
           type="button"
           className={styles.createButton}
-          onClick={resetForm}
+          onClick={openCreateForm}
         >
           <IconCheck size={18} stroke={1.8} />
           Новая сцена
@@ -595,19 +614,25 @@ export default function ScenesTab({
         </p>
       ) : null}
 
-      <div className={styles.content}>
-        <section className={styles.formPanel} aria-labelledby="scene-form-title">
+      <div
+        className={clsx(
+          styles.content,
+          !(isFormOpen || formMode === "edit") && styles.contentSingleColumn
+        )}
+      >
+        {(isFormOpen || formMode === "edit") && (
+          <section className={styles.formPanel} aria-labelledby="scene-form-title">
           <div className={styles.formHeader}>
             <h3 id="scene-form-title" className={styles.formTitle}>
               {formMode === "create" ? "Создать сцену" : "Редактировать сцену"}
             </h3>
-            {formMode === "edit" && (
+            {(isFormOpen || formMode === "edit") && (
               <button
                 type="button"
                 className={styles.secondaryButton}
-                onClick={resetForm}
+                onClick={closeForm}
               >
-                Отменить редактирование
+                {formMode === "edit" ? "Отменить редактирование" : "Закрыть"}
               </button>
             )}
           </div>
@@ -772,16 +797,14 @@ export default function ScenesTab({
 
             {/* Прикреплённый футер с действиями формы */}
             <div className={styles.formFooter}>
-              {formMode === "edit" && (
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={resetForm}
-                  disabled={isSubmitting}
-                >
-                  Сбросить
-                </button>
-              )}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={resetFormState}
+                disabled={isSubmitting}
+              >
+                Сбросить
+              </button>
               <button
                 type="submit"
                 className={styles.saveButton}
@@ -791,7 +814,8 @@ export default function ScenesTab({
               </button>
             </div>
           </form>
-        </section>
+          </section>
+        )}
 
         <section className={styles.listPanel} aria-labelledby="scenes-list-title">
           <div className={styles.listHeader}>

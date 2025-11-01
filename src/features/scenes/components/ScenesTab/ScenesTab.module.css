@@ -96,6 +96,10 @@
   gap: 18px;
 }
 
+.contentSingleColumn {
+  grid-template-columns: 1fr;
+}
+
 @media (max-width: 1200px) {
   .content {
     grid-template-columns: 1fr;
