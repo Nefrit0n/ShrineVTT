@@ -55,7 +55,7 @@ const STATUS_STYLE_CLASS: Record<SceneStatus, string> = {
   hidden: styles.statusHidden,
 };
 
-const ITEM_HEIGHT = 196;
+const ITEM_HEIGHT = 172;
 const SEARCH_DEBOUNCE = 300;
 
 type SceneFormState = {
