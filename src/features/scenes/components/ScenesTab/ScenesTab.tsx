@@ -1,8 +1,10 @@
 import {
   ChangeEvent,
+  ComponentPropsWithoutRef,
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
+  forwardRef,
   useCallback,
   useEffect,
   useMemo,
@@ -98,6 +100,19 @@ const emptyFormState: SceneFormState = {
   status: "draft",
   tags: [],
 };
+
+const ListOuterElement = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<"div">>(
+  ({ className, style, ...rest }, ref) => (
+    <div
+      ref={ref}
+      className={clsx(className, styles.virtualList)}
+      style={{ ...style, overflowX: "hidden" }}
+      {...rest}
+    />
+  )
+);
+
+ListOuterElement.displayName = "ListOuterElement";
 
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
@@ -828,6 +843,8 @@ export default function ScenesTab({
             {filteredScenes.length ? (
               // Виртуализируем список сцен для плавной прокрутки
               <FixedSizeList
+                className={styles.virtualList}
+                outerElementType={ListOuterElement}
                 height={listHeight}
                 width={Math.max(1, listSize.width)}
                 itemCount={filteredScenes.length}
