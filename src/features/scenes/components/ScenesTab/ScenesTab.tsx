@@ -3,7 +3,6 @@ import {
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
-  forwardRef,
   useCallback,
   useEffect,
   useMemo,
@@ -11,8 +10,9 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import styled, { css } from "styled-components";
+import clsx from "clsx";
 import {
+  IconCheck,
   IconCopy,
   IconDotsVertical,
   IconInfoCircle,
@@ -20,6 +20,7 @@ import {
   IconPhoto,
   IconPlayerPlay,
   IconTrash,
+  IconX,
 } from "@tabler/icons-react";
 import { FixedSizeList, ListChildComponentProps } from "react-window";
 
@@ -33,6 +34,8 @@ import {
 } from "../../api/scenesApi";
 import type { Scene, SceneCreatePayload, SceneStatus } from "../../types";
 
+import styles from "./ScenesTab.module.css";
+
 const STATUS_LABELS: Record<SceneStatus, string> = {
   active: "Активна",
   hidden: "Скрыта",
@@ -44,20 +47,14 @@ const MODE_LABELS = {
   tactical: "Тактическая карта",
 } as const;
 
-const ITEM_HEIGHT = 208;
+const STATUS_STYLE_CLASS: Record<SceneStatus, string> = {
+  active: styles.statusActive,
+  draft: styles.statusDraft,
+  hidden: styles.statusHidden,
+};
+
+const ITEM_HEIGHT = 196;
 const SEARCH_DEBOUNCE = 300;
-
-const STATUS_COLORS: Record<SceneStatus, string> = {
-  active: "rgba(82, 185, 138, 0.82)",
-  hidden: "rgba(240, 176, 98, 0.84)",
-  draft: "rgba(148, 156, 186, 0.78)",
-};
-
-const STATUS_TEXT_COLORS: Record<SceneStatus, string> = {
-  active: "rgba(14, 28, 24, 0.92)",
-  hidden: "rgba(48, 28, 8, 0.92)",
-  draft: "rgba(20, 24, 38, 0.92)",
-};
 
 type SceneFormState = {
   id?: string;
@@ -79,9 +76,16 @@ type ScenesTabProps = {
   onActivateLocally: (sceneId: string) => void;
 };
 
-type MenuAnchor = {
-  id: string;
-  rect: DOMRect;
+type MenuState = {
+  sceneId: string;
+  x: number;
+  y: number;
+};
+
+type TagInputProps = {
+  value: string[];
+  suggestions: string[];
+  onChange: (next: string[]) => void;
 };
 
 const emptyFormState: SceneFormState = {
@@ -95,13 +99,136 @@ const emptyFormState: SceneFormState = {
   tags: [],
 };
 
-async function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+function useElementSize<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!ref.current) return;
+
+    const element = ref.current;
+    const rect = element.getBoundingClientRect();
+    setSize({ width: rect.width, height: rect.height });
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      setSize({ width, height });
+    });
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return { ref, size } as const;
+}
+
+function TagInput({ value, suggestions, onChange }: TagInputProps) {
+  const [inputValue, setInputValue] = useState("");
+  const [isFocused, setFocused] = useState(false);
+
+  const availableSuggestions = useMemo(() => {
+    const query = inputValue.trim().toLowerCase();
+    return suggestions
+      .filter((tag) => !value.includes(tag))
+      .filter((tag) => (query ? tag.toLowerCase().includes(query) : true))
+      .slice(0, 6);
+  }, [inputValue, suggestions, value]);
+
+  const addTag = useCallback(
+    (next: string) => {
+      const normalized = next.trim();
+      if (!normalized || value.includes(normalized)) return;
+      onChange([...value, normalized]);
+      setInputValue("");
+    },
+    [onChange, value]
+  );
+
+  const removeTag = useCallback(
+    (tag: string) => {
+      onChange(value.filter((item) => item !== tag));
+    },
+    [onChange, value]
+  );
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      addTag(inputValue);
+    } else if (event.key === "Backspace" && !inputValue && value.length) {
+      event.preventDefault();
+      removeTag(value[value.length - 1]);
+    }
+  };
+
+  const handleSuggestionClick = (tag: string) => {
+    addTag(tag);
+  };
+
+  return (
+    <div className={styles.tagInput}>
+      {value.map((tag) => (
+        <span key={tag} className={styles.tagChip}>
+          {tag}
+          <button
+            type="button"
+            className={styles.tagRemove}
+            aria-label={`Удалить тег ${tag}`}
+            onClick={() => removeTag(tag)}
+          >
+            <IconX size={14} stroke={1.5} />
+          </button>
+        </span>
+      ))}
+      <div className={styles.suggestions}>
+        <input
+          className={styles.tagInputField}
+          value={inputValue}
+          onChange={(event) => setInputValue(event.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            window.setTimeout(() => setFocused(false), 120);
+          }}
+          placeholder={value.length ? "Добавить тег" : "Введите тег"}
+          aria-label="Теги"
+        />
+        {isFocused && availableSuggestions.length > 0 && (
+          <ul className={styles.suggestionsList} role="listbox">
+            {availableSuggestions.map((tag) => (
+              <li key={tag}>
+                <button
+                  type="button"
+                  className={styles.suggestionButton}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => handleSuggestionClick(tag)}
+                >
+                  {tag}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TooltipLabel({
+  children,
+  description,
+}: {
+  children: string;
+  description: string;
+}) {
+  return (
+    <span className={styles.tooltip}>
+      {children}
+      <IconInfoCircle size={16} stroke={1.6} aria-hidden />
+      <span className={styles.tooltipText}>{description}</span>
+    </span>
+  );
 }
 
 const ScenesTabRoot = styled.div`
@@ -800,137 +927,63 @@ export default function ScenesTab({
   onScenesUpdated,
   onActivateLocally,
 }: ScenesTabProps) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [isSubmitting, setSubmitting] = useState(false);
   const [formState, setFormState] = useState<SceneFormState>(emptyFormState);
+  const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [formError, setFormError] = useState<string | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const [isFormOpen, setFormOpen] = useState(false);
-  const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [previewScene, setPreviewScene] = useState<Scene | null>(null);
-  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
-  const [tagInput, setTagInput] = useState("");
-  const [isTagFocused, setTagFocused] = useState(false);
-  const listWrapperRef = useRef<HTMLDivElement | null>(null);
-  const [listHeight, setListHeight] = useState(0);
+  const [menuState, setMenuState] = useState<MenuState | null>(null);
+
+  const { ref: listContainerRef, size: listSize } = useElementSize<HTMLDivElement>();
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setSearchQuery(searchInput), SEARCH_DEBOUNCE);
+    return () => window.clearTimeout(handle);
+  }, [searchInput]);
 
   const syncScenes = useCallback(async () => {
     await Promise.resolve(onScenesUpdated());
   }, [onScenesUpdated]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(searchTerm.trim()), SEARCH_DEBOUNCE);
-    return () => window.clearTimeout(timer);
-  }, [searchTerm]);
+  const filteredScenes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return scenes;
 
-  const allSceneTags = useMemo(() => {
-    const tags = new Set<string>();
-    scenes.forEach((scene) => {
-      scene.tags?.forEach((tag) => tags.add(tag));
+    return scenes.filter((scene) => {
+      const haystack = [scene.name, ...(scene.tags ?? [])].join(" ").toLowerCase();
+      return haystack.includes(query);
     });
-    return Array.from(tags).sort((a, b) => a.localeCompare(b, "ru"));
+  }, [scenes, searchQuery]);
+
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    scenes.forEach((scene) => scene.tags?.forEach((tag) => tagSet.add(tag)));
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b, "ru"));
   }, [scenes]);
 
-  const filteredScenes = useMemo(() => {
-    const query = debouncedSearch.toLowerCase();
-    if (!query) return scenes;
-    return scenes.filter((scene) =>
-      [scene.name, ...(scene.tags ?? [])]
-        .join(" ")
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [debouncedSearch, scenes]);
+  const backgroundPreview = formState.backgroundData || formState.backgroundUrl;
 
-  useEffect(() => {
-    const element = listWrapperRef.current;
-    if (!element) return;
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) {
-        setListHeight(entry.contentRect.height);
-      }
-    });
-
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!menuAnchor) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.closest("[data-scene-menu]")) return;
-      if (target.closest("[data-menu-anchor]") && menuAnchor) return;
-      setMenuAnchor(null);
-    };
-
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMenuAnchor(null);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [menuAnchor]);
-
-  useEffect(() => {
-    if (!menuAnchor) return;
-    const scroller = listWrapperRef.current?.firstElementChild as HTMLElement | null;
-    if (!scroller) return;
-
-    const handleScroll = () => setMenuAnchor(null);
-    scroller.addEventListener("scroll", handleScroll, { passive: true });
-
-    return () => scroller.removeEventListener("scroll", handleScroll);
-  }, [menuAnchor]);
-
-  useEffect(() => {
-    if (!menuAnchor) return;
-    const handleResize = () => setMenuAnchor(null);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [menuAnchor]);
-
-  useEffect(() => {
-    setMenuAnchor(null);
-  }, [debouncedSearch, filteredScenes.length]);
-
-  const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(event.target.value);
-  };
-
-  const handleOpenCreate = () => {
+  const resetForm = useCallback(() => {
     setFormState(emptyFormState);
     setFormMode("create");
     setFormError(null);
-    setGlobalError(null);
-    setTagInput("");
-    setFormOpen(true);
-    setMenuAnchor(null);
-  };
+  }, []);
 
   const handleOpenEdit = useCallback(
     async (sceneId: string) => {
       try {
+        setSubmitting(true);
         const existing = await fetchScene(sceneId);
         setFormState({
           id: existing.id,
           name: existing.name,
-          backgroundUrl: existing.background ?? existing.thumbnail ?? "",
-          backgroundData: undefined,
-          width: String(existing.width),
-          height: String(existing.height),
-          gridSize: String(existing.gridSize),
+          backgroundUrl: existing.background ?? "",
+          width: String(existing.width ?? 40),
+          height: String(existing.height ?? 40),
+          gridSize: String(existing.gridSize ?? 5),
           mode: existing.mode,
           status: existing.status,
           tags: existing.tags ?? [],
@@ -938,52 +991,14 @@ export default function ScenesTab({
         setFormMode("edit");
         setFormError(null);
         setGlobalError(null);
-        setTagInput("");
-        setFormOpen(true);
-        setMenuAnchor(null);
       } catch (error) {
         console.error(error);
         setGlobalError("Не удалось загрузить данные сцены");
+      } finally {
+        setSubmitting(false);
       }
     },
     []
-  );
-
-  const handleDuplicate = useCallback(
-    async (sceneId: string) => {
-      try {
-        setSubmitting(true);
-        await duplicateScene(sceneId);
-        setGlobalError(null);
-        await syncScenes();
-      } catch (error) {
-        console.error(error);
-        setGlobalError("Не удалось дублировать сцену");
-      } finally {
-        setSubmitting(false);
-        setMenuAnchor(null);
-      }
-    },
-    [syncScenes]
-  );
-
-  const handleDelete = useCallback(
-    async (sceneId: string) => {
-      if (!window.confirm("Удалить эту сцену?")) return;
-      try {
-        setSubmitting(true);
-        await deleteScene(sceneId);
-        setGlobalError(null);
-        await syncScenes();
-      } catch (error) {
-        console.error(error);
-        setGlobalError("Не удалось удалить сцену");
-      } finally {
-        setSubmitting(false);
-        setMenuAnchor(null);
-      }
-    },
-    [syncScenes]
   );
 
   const handleActivate = useCallback(
@@ -1004,13 +1019,65 @@ export default function ScenesTab({
     [onActivateLocally, syncScenes]
   );
 
-  const handlePreview = (scene: Scene) => {
-    setPreviewScene(scene);
-    setMenuAnchor(null);
-  };
+  const handleDuplicate = useCallback(
+    async (sceneId: string) => {
+      try {
+        setSubmitting(true);
+        await duplicateScene(sceneId);
+        setGlobalError(null);
+        await syncScenes();
+      } catch (error) {
+        console.error(error);
+        setGlobalError("Не удалось создать копию сцены");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [syncScenes]
+  );
 
-  const handleClosePreview = () => {
+  const handleDelete = useCallback(
+    async (sceneId: string) => {
+      if (!window.confirm("Удалить эту сцену?")) return;
+      try {
+        setSubmitting(true);
+        await deleteScene(sceneId);
+        setGlobalError(null);
+        await syncScenes();
+      } catch (error) {
+        console.error(error);
+        setGlobalError("Не удалось удалить сцену");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [syncScenes]
+  );
+
+  const handlePreview = useCallback((scene: Scene) => {
+    setPreviewScene(scene);
+  }, []);
+
+  const handleClosePreview = useCallback(() => {
     setPreviewScene(null);
+  }, []);
+
+  const handleBackgroundFileChange = async (
+    event: FormEvent<HTMLInputElement>
+  ) => {
+    const file = event.currentTarget.files?.[0];
+    if (!file) {
+      setFormState((prev) => ({ ...prev, backgroundData: undefined }));
+      return;
+    }
+
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setFormState((prev) => ({ ...prev, backgroundData: dataUrl }));
+    } catch (error) {
+      console.error(error);
+      setFormError("Не удалось прочитать файл изображения");
+    }
   };
 
   const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1050,9 +1117,7 @@ export default function ScenesTab({
       } else if (formState.id) {
         await updateScene(formState.id, payload);
       }
-      setFormOpen(false);
-      setFormState(emptyFormState);
-      setTagInput("");
+      resetForm();
       setGlobalError(null);
       await syncScenes();
     } catch (error) {
@@ -1063,490 +1128,449 @@ export default function ScenesTab({
     }
   };
 
-  const handleFormCancel = () => {
-    setFormOpen(false);
-    setFormState(emptyFormState);
-    setFormError(null);
-    setTagInput("");
-  };
-
-  const handleBackgroundUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    setFormState((prev) => ({
-      ...prev,
-      backgroundUrl: value,
-      backgroundData: undefined,
-    }));
-  };
-
-  const handleBackgroundFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    if (!file) {
-      setFormState((prev) => ({ ...prev, backgroundData: undefined }));
-      return;
+  const listHeight = useMemo(() => {
+    if (!filteredScenes.length) {
+      return Math.max(Math.min(listSize.height || ITEM_HEIGHT, ITEM_HEIGHT), ITEM_HEIGHT);
     }
 
-    try {
-      const dataUrl = await fileToDataUrl(file);
-      setFormState((prev) => ({ ...prev, backgroundData: dataUrl }));
-    } catch (error) {
-      console.error(error);
-      setFormError("Не удалось прочитать файл изображения");
-    }
+    const estimated = filteredScenes.length * ITEM_HEIGHT;
+    const available = listSize.height || estimated;
+    const minVisible = Math.min(estimated, ITEM_HEIGHT * Math.min(filteredScenes.length, 3));
+    return Math.max(Math.min(estimated, available), minVisible);
+  }, [filteredScenes.length, listSize.height]);
+
+  const closeMenu = () => setMenuState(null);
+
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      if (!(event.target instanceof HTMLElement)) return;
+      if (event.target.closest(`.${styles.menuPortal}`)) return;
+      closeMenu();
+    };
+
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, []);
+
+  const handleOpenMenu = (
+    sceneId: string,
+    event: ReactMouseEvent<HTMLButtonElement>
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMenuState({
+      sceneId,
+      x: rect.left,
+      y: rect.bottom + 6,
+    });
   };
 
-  const addTag = useCallback(
-    (tag: string) => {
-      const normalized = tag.trim();
-      if (!normalized) return;
-      setFormState((prev) => {
-        if (prev.tags.includes(normalized)) {
-          return prev;
-        }
-        return { ...prev, tags: [...prev.tags, normalized] };
-      });
-      setTagInput("");
-    },
-    []
-  );
-
-  const removeTag = (tag: string) => {
-    setFormState((prev) => ({
-      ...prev,
-      tags: prev.tags.filter((existing) => existing !== tag),
-    }));
-  };
-
-  const handleTagInputChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setTagInput(event.target.value);
-  };
-
-  const handleTagInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter" || event.key === "," || event.key === "Tab") {
-      if (tagInput.trim()) {
-        event.preventDefault();
-        addTag(tagInput);
-      }
-    } else if (event.key === "Backspace" && !tagInput && formState.tags.length) {
-      removeTag(formState.tags[formState.tags.length - 1]);
-    }
-  };
-
-  const tagSuggestions = useMemo(() => {
-    const query = tagInput.trim().toLowerCase();
-    if (!query) {
-      return allSceneTags.filter((tag) => !formState.tags.includes(tag));
-    }
-    return allSceneTags.filter(
-      (tag) =>
-        !formState.tags.includes(tag) && tag.toLowerCase().includes(query)
-    );
-  }, [allSceneTags, formState.tags, tagInput]);
-
-  const showTagSuggestions = isTagFocused && tagSuggestions.length > 0;
-
-  const handleToggleMenu = useCallback(
-    (sceneId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      const rect = event.currentTarget.getBoundingClientRect();
-      setMenuAnchor((current) => {
-        if (current?.id === sceneId) {
-          return null;
-        }
-        return { id: sceneId, rect };
-      });
-    },
-    []
-  );
-
-  const backgroundPreview =
-    formState.backgroundData || formState.backgroundUrl.trim() || null;
-
-  const computedListHeight = useMemo(() => {
-    if (listHeight > 0) return listHeight;
-    const estimatedItems = Math.min(filteredScenes.length || scenes.length || 1, 4);
-    return Math.max(estimatedItems, 1) * ITEM_HEIGHT;
-  }, [filteredScenes.length, listHeight, scenes.length]);
-
-  const renderSceneRow = useCallback(
-    ({ index, style, data }: ListChildComponentProps<Scene[]>) => {
-      const scene = data[index];
-      if (!scene) return null;
-
+  const SceneRow = useCallback(
+    ({ index, style }: ListChildComponentProps) => {
+      const scene = filteredScenes[index];
       const isActive = scene.id === activeSceneId;
-      const isMenuOpen = menuAnchor?.id === scene.id;
-      const thumbnail = scene.thumbnail ?? scene.background ?? "";
 
       return (
-        <SceneRow style={style}>
-          <SceneCard $active={isActive} role="listitem">
-            <StatusBadge $status={scene.status}>{STATUS_LABELS[scene.status]}</StatusBadge>
-            <PreviewButton
-              type="button"
-              onClick={() => handlePreview(scene)}
-              aria-label={`Предпросмотр сцены «${scene.name}»`}
+        <div style={style} className={styles.row}>
+          <article
+            className={clsx(styles.sceneCard, isActive && styles.sceneCardActive)}
+            role="listitem"
+          >
+            <span
+              className={clsx(styles.statusBadge, STATUS_STYLE_CLASS[scene.status])}
             >
-              {thumbnail ? (
-                <PreviewImage src={thumbnail} alt={`Миниатюра сцены «${scene.name}»`} />
+              {STATUS_LABELS[scene.status]}
+            </span>
+            <button
+              type="button"
+              className={styles.cardPreview}
+              onClick={() => handlePreview(scene)}
+              aria-label={`Предпросмотр сцены ${scene.name}`}
+            >
+              {scene.thumbnail ? (
+                <img src={scene.thumbnail} alt="Миниатюра сцены" />
               ) : (
-                <PreviewPlaceholder>
-                  <IconPhoto size={20} />
-                  <span>Нет изображения</span>
-                </PreviewPlaceholder>
+                <span className={styles.cardPlaceholder}>Нет изображения</span>
               )}
-            </PreviewButton>
-            <CardContent>
-              <SceneHeading>
-                <SceneName>{scene.name}</SceneName>
-                <ActionsGroup>
-                  <PrimaryActions>
-                    <IconButton
-                      type="button"
-                      onClick={() => handleActivate(scene.id)}
-                      disabled={isSubmitting}
-                      aria-label={`Открыть сцену «${scene.name}»`}
-                    >
-                      <IconPlayerPlay size={18} />
-                    </IconButton>
-                    <IconButton
-                      type="button"
-                      onClick={() => handleOpenEdit(scene.id)}
-                      disabled={isSubmitting}
-                      aria-label={`Редактировать сцену «${scene.name}»`}
-                    >
-                      <IconPencil size={18} />
-                    </IconButton>
-                    <DeleteIconButton
-                      type="button"
-                      onClick={() => handleDelete(scene.id)}
-                      disabled={isSubmitting || isActive}
-                      aria-label={`Удалить сцену «${scene.name}»`}
-                    >
-                      <IconTrash size={18} />
-                    </DeleteIconButton>
-                  </PrimaryActions>
-                  <MoreButton
+            </button>
+            <div className={styles.cardContent}>
+              <div className={styles.cardHeader}>
+                <h4 className={styles.sceneName}>{scene.name}</h4>
+                <div className={styles.actionsRow}>
+                  <button
                     type="button"
-                    data-menu-anchor
-                    aria-label={`Дополнительные действия для сцены «${scene.name}»`}
-                    aria-expanded={isMenuOpen}
-                    onClick={(event: ReactMouseEvent<HTMLButtonElement>) =>
-                      handleToggleMenu(scene.id, event)
-                    }
+                    className={styles.iconButton}
+                    onClick={() => handleActivate(scene.id)}
                     disabled={isSubmitting}
+                    aria-label="Открыть сцену"
                   >
-                    <IconDotsVertical size={18} />
-                  </MoreButton>
-                </ActionsGroup>
-              </SceneHeading>
-              <SceneMeta>
+                    <IconPlayerPlay size={18} stroke={1.8} />
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.iconButton}
+                    onClick={() => handleOpenEdit(scene.id)}
+                    disabled={isSubmitting}
+                    aria-label="Редактировать сцену"
+                  >
+                    <IconPencil size={18} stroke={1.8} />
+                  </button>
+                  <button
+                    type="button"
+                    className={clsx(styles.iconButton, styles.deleteButton)}
+                    onClick={() => handleDelete(scene.id)}
+                    disabled={scene.id === activeSceneId || isSubmitting}
+                    aria-label="Удалить сцену"
+                  >
+                    <IconTrash size={18} stroke={1.8} />
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.iconButton}
+                    onClick={(event) => handleOpenMenu(scene.id, event)}
+                    aria-label="Другие действия"
+                  >
+                    <IconDotsVertical size={18} stroke={1.8} />
+                  </button>
+                </div>
+              </div>
+              <div className={styles.meta}>
                 <span>{MODE_LABELS[scene.mode]}</span>
                 <span>{`${scene.width}×${scene.height}`} м</span>
                 <span>{`Сетка ${scene.gridSize} м`}</span>
-              </SceneMeta>
+              </div>
               {scene.tags?.length ? (
-                <SceneTags>
-                  {scene.tags.map((tag: string) => (
-                    <SceneTag key={tag}>{tag}</SceneTag>
+                <div className={styles.tagsRow}>
+                  {scene.tags.map((tag) => (
+                    <span key={tag} className={styles.cardTag}>
+                      {tag}
+                    </span>
                   ))}
-                </SceneTags>
+                </div>
               ) : null}
-            </CardContent>
-          </SceneCard>
-        </SceneRow>
+            </div>
+          </article>
+        </div>
       );
     },
-    [activeSceneId, handleActivate, handleDelete, handleOpenEdit, handlePreview, handleToggleMenu, isSubmitting, menuAnchor]
+    [activeSceneId, filteredScenes, handleActivate, handleDelete, handleOpenEdit, handlePreview, isSubmitting]
   );
 
   return (
-    <ScenesTabRoot>
-      <ActionsRow>
-        <SearchInput
+    <div className={styles.scenesTab}>
+      <div className={styles.actions}>
+        <input
           type="search"
-          value={searchTerm}
-          onChange={handleSearchChange}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
+          className={styles.search}
           placeholder="Поиск сцен..."
-          aria-label="Поиск по списку сцен"
+          aria-label="Поиск по сценам"
         />
-        <CreateButton type="button" onClick={handleOpenCreate}>
-          Создать сцену
-        </CreateButton>
-      </ActionsRow>
+        <button
+          type="button"
+          className={styles.createButton}
+          onClick={resetForm}
+        >
+          <IconCheck size={18} stroke={1.8} />
+          Новая сцена
+        </button>
+      </div>
 
-      {globalError && <InlineError role="alert">{globalError}</InlineError>}
+      {globalError ? (
+        <p className={styles.globalError} role="alert">
+          {globalError}
+        </p>
+      ) : null}
 
-      <ListWrapper ref={listWrapperRef}>
-        {filteredScenes.length > 0 ? (
-          <FixedSizeList
-            outerElementType={ListOuterElement}
-            height={computedListHeight}
-            width="100%"
-            itemCount={filteredScenes.length}
-            itemSize={ITEM_HEIGHT}
-            itemData={filteredScenes}
-          >
-            {renderSceneRow}
-          </FixedSizeList>
-        ) : (
-          <ListEmpty>Сцены не найдены</ListEmpty>
-        )}
-      </ListWrapper>
-
-      {isFormOpen && (
-        <ModalOverlay role="dialog" aria-modal="true">
-          <ModalCard>
-            <ModalHeader>
-              <ModalTitle>
-                {formMode === "create" ? "Создать сцену" : "Редактировать сцену"}
-              </ModalTitle>
-              <CloseModalButton
+      <div className={styles.content}>
+        <section className={styles.formPanel} aria-labelledby="scene-form-title">
+          <div className={styles.formHeader}>
+            <h3 id="scene-form-title" className={styles.formTitle}>
+              {formMode === "create" ? "Создать сцену" : "Редактировать сцену"}
+            </h3>
+            {formMode === "edit" && (
+              <button
                 type="button"
-                aria-label="Закрыть"
-                onClick={handleFormCancel}
+                className={styles.secondaryButton}
+                onClick={resetForm}
               >
-                ×
-              </CloseModalButton>
-            </ModalHeader>
-            <FormLayout onSubmit={handleFormSubmit}>
-              <FormBody>
-                <FormSection>
-                  <SectionTitle>Основное</SectionTitle>
-                  <SectionGrid>
-                    <Field>
-                      <FieldTitle>Название</FieldTitle>
-                      <InputBase
-                        type="text"
-                        value={formState.name}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                          setFormState((prev) => ({ ...prev, name: event.target.value }))
-                        }
-                        placeholder="Введите название"
-                        required
-                      />
-                    </Field>
-                    <Field>
-                      <FieldTitle>Фон (ссылка)</FieldTitle>
-                      <InputBase
-                        type="url"
-                        value={formState.backgroundUrl}
-                        onChange={handleBackgroundUrlChange}
-                        placeholder="https://..."
-                      />
-                    </Field>
-                    <Field>
-                      <FieldTitle>Фон (загрузка)</FieldTitle>
-                      <InputBase
-                        as="input"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleBackgroundFileChange}
-                      />
-                    </Field>
-                    {backgroundPreview && (
-                      <Field as="div">
-                        <FieldTitle>Предпросмотр фона</FieldTitle>
-                        <BackgroundPreview>
-                          <BackgroundPreviewImage
-                            src={backgroundPreview}
-                            alt="Предпросмотр фонового изображения"
-                          />
-                        </BackgroundPreview>
-                      </Field>
-                    )}
-                  </SectionGrid>
-                </FormSection>
+                Отменить редактирование
+              </button>
+            )}
+          </div>
+          <form className={styles.formBody} onSubmit={handleFormSubmit}>
+            <div className={styles.section}>
+              <h4 className={styles.sectionTitle}>Основное</h4>
+              <label className={styles.field}>
+                <span className={styles.labelRow}>Название</span>
+                <input
+                  type="text"
+                  className={styles.input}
+                  value={formState.name}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  required
+                  placeholder="Например, Лесная поляна"
+                />
+              </label>
+              <div className={styles.field}>
+                <span className={styles.labelRow}>Фон (загрузка или URL)</span>
+                <div className={styles.fileRow}>
+                  <label className={styles.fileButton}>
+                    <IconPhoto size={18} stroke={1.8} /> Загрузить
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleBackgroundFileChange}
+                    />
+                  </label>
+                  <input
+                    type="url"
+                    className={styles.urlInput}
+                    placeholder="https://..."
+                    value={formState.backgroundUrl}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        backgroundUrl: event.target.value,
+                        backgroundData: undefined,
+                      }))
+                    }
+                  />
+                </div>
+                <div className={styles.previewBox}>
+                  {backgroundPreview ? (
+                    <img src={backgroundPreview} alt="Предпросмотр фона" />
+                  ) : (
+                    <span className={styles.previewPlaceholder}>
+                      Выберите изображение или вставьте ссылку, чтобы увидеть превью
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
 
-                <FormSection>
-                  <SectionTitle>Размеры</SectionTitle>
-                  <DimensionsGrid>
-                    <Field>
-                      <FieldTitle>Ширина (м)</FieldTitle>
-                      <InputBase
-                        type="number"
-                        min={1}
-                        value={formState.width}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                          setFormState((prev) => ({ ...prev, width: event.target.value }))
-                        }
-                        required
-                      />
-                    </Field>
-                    <Field>
-                      <FieldTitle>Высота (м)</FieldTitle>
-                      <InputBase
-                        type="number"
-                        min={1}
-                        value={formState.height}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                          setFormState((prev) => ({ ...prev, height: event.target.value }))
-                        }
-                        required
-                      />
-                    </Field>
-                    <Field>
-                      <FieldTitle>Сетка (м)</FieldTitle>
-                      <InputBase
-                        type="number"
-                        min={1}
-                        value={formState.gridSize}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                          setFormState((prev) => ({ ...prev, gridSize: event.target.value }))
-                        }
-                        required
-                      />
-                    </Field>
-                  </DimensionsGrid>
-                </FormSection>
+            <div className={styles.section}>
+              <h4 className={styles.sectionTitle}>Размеры</h4>
+              <div className={styles.fieldsGrid}>
+                <label className={styles.field}>
+                  <span className={styles.labelRow}>Ширина (м)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className={styles.input}
+                    value={formState.width}
+                    onChange={(event) =>
+                      setFormState((prev) => ({ ...prev, width: event.target.value }))
+                    }
+                    required
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.labelRow}>Высота (м)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className={styles.input}
+                    value={formState.height}
+                    onChange={(event) =>
+                      setFormState((prev) => ({ ...prev, height: event.target.value }))
+                    }
+                    required
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.labelRow}>Сетка (м)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className={styles.input}
+                    value={formState.gridSize}
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        gridSize: event.target.value,
+                      }))
+                    }
+                    required
+                  />
+                </label>
+              </div>
+            </div>
 
-                <FormSection>
-                  <SectionTitle>Параметры</SectionTitle>
-                  <SectionGrid>
-                    <Field>
-                      <FieldTitle>
-                        Режим
-                        <TooltipIconWrapper title="Театр воображения скрывает сетку, а тактическая карта отображает точные клетки">
-                          <IconInfoCircle size={16} aria-hidden="true" />
-                        </TooltipIconWrapper>
-                      </FieldTitle>
-                      <SelectBase
-                        value={formState.mode}
-                        onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                          setFormState((prev) => ({
-                            ...prev,
-                            mode: event.target.value as SceneCreatePayload["mode"],
-                          }))
-                        }
-                      >
-                        <option value="theatre">Театр воображения</option>
-                        <option value="tactical">Тактическая карта</option>
-                      </SelectBase>
-                    </Field>
-                    <Field>
-                      <FieldTitle>
-                        Статус
-                        <TooltipIconWrapper title="Статус определяет видимость сцены для игроков и её готовность">
-                          <IconInfoCircle size={16} aria-hidden="true" />
-                        </TooltipIconWrapper>
-                      </FieldTitle>
-                      <SelectBase
-                        value={formState.status}
-                        onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                          setFormState((prev) => ({
-                            ...prev,
-                            status: event.target.value as SceneCreatePayload["status"],
-                          }))
-                        }
-                      >
-                        <option value="draft">Черновик</option>
-                        <option value="hidden">Скрыта</option>
-                        <option value="active">Активна</option>
-                      </SelectBase>
-                    </Field>
-                    <Field as="div">
-                      <FieldTitle>Теги</FieldTitle>
-                      <TagFieldWrapper>
-                        <TagArea>
-                          {formState.tags.map((tag: string) => (
-                            <TagChip key={tag}>
-                              {tag}
-                              <RemoveTagButton
-                                type="button"
-                                aria-label={`Удалить тег ${tag}`}
-                                onClick={() => removeTag(tag)}
-                              >
-                                ×
-                              </RemoveTagButton>
-                            </TagChip>
-                          ))}
-                          <TagInput
-                            value={tagInput}
-                            onChange={handleTagInputChange}
-                            onKeyDown={handleTagInputKeyDown}
-                            onFocus={() => setTagFocused(true)}
-                            onBlur={() => setTimeout(() => setTagFocused(false), 100)}
-                            placeholder="Добавьте тег"
-                          />
-                        </TagArea>
-                        {showTagSuggestions && (
-                          <TagSuggestions>
-                            {tagSuggestions.map((tag: string) => (
-                              <li key={tag}>
-                                <TagSuggestionButton
-                                  type="button"
-                                  onMouseDown={(event: ReactMouseEvent<HTMLButtonElement>) =>
-                                    event.preventDefault()
-                                  }
-                                  onClick={() => addTag(tag)}
-                                >
-                                  {tag}
-                                </TagSuggestionButton>
-                              </li>
-                            ))}
-                          </TagSuggestions>
-                        )}
-                      </TagFieldWrapper>
-                    </Field>
-                  </SectionGrid>
-                </FormSection>
+            <div className={styles.section}>
+              <h4 className={styles.sectionTitle}>Параметры</h4>
+              <label className={styles.field}>
+                <span className={styles.labelRow}>
+                  <TooltipLabel description="Театр воображения скрывает сетку и размеры, оставляя только описание сцены.">
+                    Режим
+                  </TooltipLabel>
+                </span>
+                <select
+                  className={styles.select}
+                  value={formState.mode}
+                  onChange={(event) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      mode: event.target.value as SceneCreatePayload["mode"],
+                    }))
+                  }
+                >
+                  <option value="theatre">Театр воображения</option>
+                  <option value="tactical">Тактическая карта</option>
+                </select>
+              </label>
+              <label className={styles.field}>
+                <span className={styles.labelRow}>
+                  <TooltipLabel description="Статус определяет видимость сцены для игроков и доступность в интерфейсе мастера.">
+                    Статус
+                  </TooltipLabel>
+                </span>
+                <select
+                  className={styles.select}
+                  value={formState.status}
+                  onChange={(event) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      status: event.target.value as SceneCreatePayload["status"],
+                    }))
+                  }
+                >
+                  <option value="draft">Черновик</option>
+                  <option value="active">Активна</option>
+                  <option value="hidden">Скрыта</option>
+                </select>
+              </label>
+              <label className={styles.field}>
+                <span className={styles.labelRow}>Теги</span>
+                <TagInput
+                  value={formState.tags}
+                  suggestions={allTags}
+                  onChange={(tags) => setFormState((prev) => ({ ...prev, tags }))}
+                />
+              </label>
+            </div>
 
-                {formError && <FormError>{formError}</FormError>}
-              </FormBody>
-              <StickyFooter>
-                <SecondaryButton
+            {formError ? <p className={styles.formError}>{formError}</p> : null}
+
+            <div className={styles.formFooter}>
+              {formMode === "edit" && (
+                <button
                   type="button"
-                  onClick={handleFormCancel}
+                  className={styles.secondaryButton}
+                  onClick={resetForm}
                   disabled={isSubmitting}
                 >
-                  Отмена
-                </SecondaryButton>
-                <PrimaryButton type="submit" disabled={isSubmitting}>
-                  Сохранить
-                </PrimaryButton>
-              </StickyFooter>
-            </FormLayout>
-          </ModalCard>
-        </ModalOverlay>
-      )}
-
-      {previewScene && (
-        <ModalOverlay role="dialog" aria-modal="true">
-          <PreviewModalCard>
-            <ModalHeader>
-              <ModalTitle>{previewScene.name}</ModalTitle>
-              <CloseModalButton
-                type="button"
-                aria-label="Закрыть"
-                onClick={handleClosePreview}
-              >
-                ×
-              </CloseModalButton>
-            </ModalHeader>
-            <PreviewBody>
-              {previewScene.background ? (
-                <PreviewImageLarge src={previewScene.background} alt={previewScene.name} />
-              ) : (
-                <ListEmpty>Нет изображения</ListEmpty>
+                  Сбросить
+                </button>
               )}
-            </PreviewBody>
-          </PreviewModalCard>
-        </ModalOverlay>
-      )}
+              <button
+                type="submit"
+                className={styles.saveButton}
+                disabled={isSubmitting}
+              >
+                <IconCheck size={18} stroke={1.8} /> Сохранить
+              </button>
+            </div>
+          </form>
+        </section>
 
-      {menuAnchor && typeof document !== "undefined" &&
+        <section className={styles.listPanel} aria-labelledby="scenes-list-title">
+          <div className={styles.listHeader}>
+            <h3 id="scenes-list-title" className={styles.listTitle}>
+              Сцены
+            </h3>
+            <span className={styles.listCounter}>{filteredScenes.length} из {scenes.length}</span>
+          </div>
+          <div className={styles.listBody} ref={listContainerRef}>
+            {filteredScenes.length ? (
+              <FixedSizeList
+                height={listHeight}
+                width={Math.max(1, listSize.width)}
+                itemCount={filteredScenes.length}
+                itemSize={ITEM_HEIGHT}
+                overscanCount={4}
+              >
+                {SceneRow}
+              </FixedSizeList>
+            ) : (
+              <p className={styles.empty}>Сцены не найдены</p>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {menuState &&
         createPortal(
-          <MenuContainer
-            style={{
-              top: Math.min(menuAnchor.rect.bottom + 8, window.innerHeight - 140),
-              left: Math.min(menuAnchor.rect.left, window.innerWidth - 220),
-            }}
+          <div
+            className={styles.menuPortal}
+            style={{ left: menuState.x, top: menuState.y }}
+            role="menu"
           >
-            <MenuItemButton type="button" onClick={() => handleDuplicate(menuAnchor.id)}>
-              <IconCopy size={16} /> Дублировать
-            </MenuItemButton>
-          </MenuContainer>,
+            <button
+              type="button"
+              className={styles.menuItem}
+              onClick={() => {
+                closeMenu();
+                handleDuplicate(menuState.sceneId);
+              }}
+            >
+              <IconCopy size={18} stroke={1.8} /> Создать копию
+            </button>
+            <div className={styles.menuSeparator} aria-hidden />
+            <button
+              type="button"
+              className={styles.menuItem}
+              onClick={() => {
+                closeMenu();
+                const target = filteredScenes.find((scene) => scene.id === menuState.sceneId);
+                if (target) {
+                  handlePreview(target);
+                }
+              }}
+            >
+              <IconInfoCircle size={18} stroke={1.8} /> Предпросмотр
+            </button>
+          </div>,
           document.body
         )}
-    </ScenesTabRoot>
+
+      {previewScene ? (
+        <div className={styles.previewModal} role="dialog" aria-modal="true">
+          <div className={styles.previewCard}>
+            <div className={styles.previewHeader}>
+              <h3>{previewScene.name}</h3>
+              <button
+                type="button"
+                className={styles.previewClose}
+                onClick={handleClosePreview}
+                aria-label="Закрыть"
+              >
+                ×
+              </button>
+            </div>
+            {previewScene.background ? (
+              <img
+                src={previewScene.background}
+                alt={previewScene.name}
+                className={styles.previewImage}
+              />
+            ) : (
+              <p className={styles.empty}>Нет изображения</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
+}
+
+async function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
