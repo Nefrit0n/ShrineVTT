@@ -1,0 +1,731 @@
+.scenesTab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  color: #f3f4ff;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.search {
+  flex: 1;
+  min-width: 220px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(116, 128, 168, 0.6);
+  background: rgba(10, 13, 24, 0.92);
+  color: inherit;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.search::placeholder {
+  color: rgba(190, 198, 226, 0.65);
+}
+
+.search:focus-visible {
+  outline: none;
+  border-color: rgba(148, 174, 255, 0.8);
+  box-shadow: 0 0 0 3px rgba(120, 152, 255, 0.22);
+  background: rgba(16, 20, 34, 0.98);
+}
+
+.createButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(102, 122, 206, 0.45);
+  background: linear-gradient(135deg, rgba(94, 122, 208, 0.35), rgba(72, 104, 196, 0.42));
+  color: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.createButton:hover,
+.createButton:focus-visible {
+  outline: none;
+  border-color: rgba(148, 174, 255, 0.6);
+  background: linear-gradient(135deg, rgba(112, 146, 236, 0.42), rgba(82, 116, 206, 0.48));
+  box-shadow: 0 0 0 3px rgba(120, 150, 242, 0.18);
+  transform: translateY(-1px);
+}
+
+.createButton:active {
+  transform: translateY(0);
+}
+
+.createButton:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.globalError {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(224, 136, 150, 0.55);
+  background: rgba(68, 18, 24, 0.85);
+  color: #ffdce1;
+  font-size: 0.9rem;
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 1200px) {
+  .content {
+    grid-template-columns: 1fr;
+  }
+}
+
+.formPanel {
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  border: 1px solid rgba(80, 94, 146, 0.55);
+  background: rgba(9, 12, 22, 0.92);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.formHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 10px;
+  gap: 12px;
+}
+
+.formTitle {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.formBody {
+  padding: 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(205, 214, 245, 0.92);
+}
+
+.fieldsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.labelRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.86rem;
+  color: rgba(205, 214, 245, 0.82);
+}
+
+.input,
+.select,
+.urlInput {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(108, 120, 164, 0.55);
+  background: rgba(10, 13, 24, 0.92);
+  color: inherit;
+  font: inherit;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.input:focus-visible,
+.select:focus-visible,
+.urlInput:focus-visible {
+  outline: none;
+  border-color: rgba(144, 170, 255, 0.85);
+  box-shadow: 0 0 0 2px rgba(120, 150, 248, 0.24);
+  background: rgba(14, 18, 32, 0.98);
+}
+
+.fileRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.fileButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px dashed rgba(118, 136, 206, 0.55);
+  background: rgba(12, 16, 30, 0.96);
+  color: rgba(210, 220, 255, 0.95);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.fileButton:hover,
+.fileButton:focus-visible {
+  outline: none;
+  border-color: rgba(150, 178, 255, 0.6);
+  background: rgba(18, 22, 38, 0.98);
+}
+
+.fileButton input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.previewBox {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(70, 86, 140, 0.6);
+  background: rgba(6, 8, 16, 0.7);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
+.previewBox img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.previewPlaceholder {
+  padding: 24px;
+  color: rgba(188, 196, 226, 0.65);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.tagInput {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(108, 120, 164, 0.55);
+  background: rgba(10, 13, 24, 0.92);
+  min-height: 44px;
+}
+
+.tagInput:focus-within {
+  border-color: rgba(144, 170, 255, 0.85);
+  box-shadow: 0 0 0 2px rgba(120, 150, 248, 0.24);
+}
+
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(92, 120, 210, 0.25);
+  border: 1px solid rgba(116, 144, 224, 0.4);
+  font-size: 0.8rem;
+  color: rgba(220, 228, 255, 0.92);
+}
+
+.tagRemove {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.tagInputField {
+  flex: 1;
+  min-width: 120px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 4px;
+}
+
+.tagInputField:focus-visible {
+  outline: none;
+}
+
+.suggestions {
+  position: relative;
+  width: 100%;
+}
+
+.suggestionsList {
+  position: absolute;
+  z-index: 50;
+  top: 6px;
+  left: 0;
+  right: 0;
+  transform: translateY(100%);
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  border-radius: 12px;
+  border: 1px solid rgba(86, 104, 180, 0.6);
+  background: rgba(12, 15, 28, 0.96);
+  box-shadow: 0 14px 24px rgba(6, 8, 16, 0.35);
+}
+
+.suggestionButton {
+  width: 100%;
+  text-align: left;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.suggestionButton:hover,
+.suggestionButton:focus-visible {
+  outline: none;
+  background: rgba(86, 108, 196, 0.28);
+}
+
+.formFooter {
+  margin-top: auto;
+  padding: 14px 20px 18px;
+  background: linear-gradient(180deg, rgba(9, 12, 22, 0.9), rgba(9, 12, 22, 0.98));
+  border-top: 1px solid rgba(80, 94, 146, 0.55);
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.saveButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(118, 142, 214, 0.55);
+  background: linear-gradient(135deg, rgba(78, 108, 200, 0.48), rgba(62, 90, 180, 0.52));
+  color: #f5f6ff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.saveButton:hover,
+.saveButton:focus-visible {
+  outline: none;
+  border-color: rgba(150, 180, 255, 0.68);
+  box-shadow: 0 0 0 4px rgba(120, 150, 242, 0.18);
+  transform: translateY(-1px);
+}
+
+.saveButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(104, 118, 160, 0.6);
+  background: rgba(16, 20, 34, 0.94);
+  color: rgba(210, 220, 255, 0.92);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.secondaryButton:hover,
+.secondaryButton:focus-visible {
+  outline: none;
+  border-color: rgba(146, 172, 240, 0.7);
+  background: rgba(20, 26, 40, 0.98);
+}
+
+.formError {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(216, 120, 140, 0.6);
+  background: rgba(80, 20, 32, 0.85);
+  color: #ffd9e0;
+  font-size: 0.86rem;
+}
+
+.listPanel {
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  border: 1px solid rgba(68, 86, 148, 0.55);
+  background: rgba(9, 12, 22, 0.92);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.listHeader {
+  padding: 18px 20px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.listTitle {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 600;
+}
+
+.listCounter {
+  color: rgba(180, 192, 226, 0.72);
+  font-size: 0.85rem;
+}
+
+.listBody {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.row {
+  padding: 10px 20px;
+  box-sizing: border-box;
+}
+
+.sceneCard {
+  position: relative;
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 18px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(68, 86, 148, 0.55);
+  background: rgba(12, 15, 28, 0.92);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.sceneCard:hover {
+  border-color: rgba(138, 170, 255, 0.6);
+  box-shadow: 0 16px 32px rgba(4, 6, 14, 0.35);
+  transform: translateY(-2px);
+}
+
+.sceneCardActive {
+  border-color: rgba(158, 186, 255, 0.85);
+  box-shadow: 0 0 0 2px rgba(140, 172, 255, 0.35);
+  background: rgba(16, 20, 36, 0.95);
+}
+
+.cardPreview {
+  border-radius: 12px;
+  border: 1px solid rgba(70, 88, 146, 0.6);
+  overflow: hidden;
+  background: rgba(6, 8, 16, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cardPreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cardPlaceholder {
+  padding: 18px;
+  color: rgba(176, 184, 214, 0.65);
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.cardContent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.sceneName {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(230, 234, 255, 0.98);
+}
+
+.actionsRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(84, 106, 176, 0.55);
+  background: rgba(16, 20, 34, 0.95);
+  color: rgba(210, 220, 255, 0.92);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.iconButton:hover,
+.iconButton:focus-visible {
+  outline: none;
+  border-color: rgba(144, 172, 248, 0.7);
+  background: rgba(22, 28, 44, 0.98);
+  transform: translateY(-1px);
+}
+
+.iconButton:active {
+  transform: translateY(0);
+}
+
+.deleteButton {
+  border-color: rgba(206, 108, 128, 0.6);
+  background: rgba(54, 16, 24, 0.9);
+  color: #ffd9df;
+}
+
+.deleteButton:hover,
+.deleteButton:focus-visible {
+  border-color: rgba(232, 138, 162, 0.75);
+  background: rgba(72, 22, 30, 0.95);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 0.85rem;
+  color: rgba(188, 198, 226, 0.75);
+}
+
+.tagsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cardTag {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(96, 120, 210, 0.25);
+  border: 1px solid rgba(120, 146, 232, 0.32);
+  font-size: 0.75rem;
+  color: rgba(210, 222, 255, 0.9);
+}
+
+.statusBadge {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #05060b;
+}
+
+.statusActive {
+  background: rgba(104, 212, 164, 0.85);
+}
+
+.statusDraft {
+  background: rgba(154, 162, 196, 0.85);
+}
+
+.statusHidden {
+  background: rgba(238, 182, 112, 0.85);
+}
+
+.empty {
+  margin: 0;
+  padding: 40px 20px;
+  text-align: center;
+  color: rgba(188, 198, 226, 0.7);
+}
+
+.menuPortal {
+  position: fixed;
+  z-index: 1200;
+  min-width: 180px;
+  border-radius: 12px;
+  border: 1px solid rgba(84, 106, 176, 0.6);
+  background: rgba(10, 13, 24, 0.98);
+  box-shadow: 0 18px 32px rgba(4, 6, 14, 0.42);
+  overflow: hidden;
+}
+
+.menuItem {
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  outline: none;
+  background: rgba(92, 118, 206, 0.25);
+}
+
+.menuSeparator {
+  height: 1px;
+  background: rgba(84, 104, 172, 0.4);
+  margin: 4px 0;
+}
+
+.previewModal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 6, 12, 0.78);
+  z-index: 1100;
+}
+
+.previewCard {
+  width: min(820px, 90vw);
+  max-height: 90vh;
+  border-radius: 18px;
+  border: 1px solid rgba(82, 102, 168, 0.6);
+  background: rgba(8, 10, 18, 0.96);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.previewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(82, 102, 168, 0.4);
+}
+
+.previewHeader h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.previewClose {
+  background: none;
+  border: none;
+  color: rgba(210, 220, 255, 0.88);
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+.previewImage {
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  background: #05060b;
+}
+
+.tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tooltipText {
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  background: rgba(26, 32, 56, 0.98);
+  color: rgba(226, 232, 255, 0.95);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  pointer-events: none;
+  border: 1px solid rgba(96, 118, 200, 0.6);
+  box-shadow: 0 10px 18px rgba(4, 6, 14, 0.38);
+}
+
+.tooltip:hover .tooltipText,
+.tooltip:focus-within .tooltipText {
+  visibility: visible;
+  opacity: 1;
+}
+
+@media (max-width: 720px) {
+  .sceneCard {
+    grid-template-columns: 1fr;
+  }
+
+  .cardPreview {
+    height: 160px;
+  }
+}
